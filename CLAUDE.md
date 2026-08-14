@@ -3,6 +3,9 @@
 自分のインプット動画(YouTube・X・GFS等)をダウンロードし、llm-wiki取込パイプラインの入口となるAndroidアプリ。
 **Play公開しない(サイドロード運用)**。私的利用限定・取得物の第三者共有不可。
 
+商用アプリ `apps/personal-ai`(Play配信)とは配布形態も機能境界も異なる二層構造(モノレポCLAUDE.md参照)。
+**このアプリのDL系コードをpersonal-aiへ持ち込まない**。本アプリの役割は自分用の実用+知識化パイプラインの実験場。
+
 ## スタック(2026-08-14確定)
 
 - Kotlin + Jetpack Compose + youtubedl-android(yt-dlpラッパー、`io.github.junkfood02.youtubedl-android`)
