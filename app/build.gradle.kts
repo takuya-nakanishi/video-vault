@@ -21,6 +21,8 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            // x86_64エミュレータで画面確認するためdebugのみABIを追加(実機はarm64。releaseはarm64のみのまま)
+            ndk { abiFilters += "x86_64" }
         }
         release {
             isMinifyEnabled = false
