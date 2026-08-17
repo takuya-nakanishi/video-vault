@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ダークテーマ時の起動直後の背景。中身の配色はCompose側(VideoVaultTheme)が持つ -->
+<resources>
+    <style name="Theme.VideoVault" parent="android:Theme.Material.NoActionBar" />
+</resources>

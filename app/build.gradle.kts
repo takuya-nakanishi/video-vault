@@ -50,10 +50,13 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.youtubedl.library)
     implementation(libs.youtubedl.ffmpeg)
+    // 入力欄の判定(domain層)はAndroid非依存の純粋なKotlin。JVMの単体テストで確かめる
+    testImplementation(libs.junit)
 }

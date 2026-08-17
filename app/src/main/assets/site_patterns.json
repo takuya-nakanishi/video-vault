@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "note": "入力欄に入ったURLの判定表。コードに埋めず設定として分離する(ui-ux.md)。商用版はサーバー配信にするが、video-vaultはこのJSONで足りる。hostsは後方一致で、サブドメインも含む(youtube.com は m.youtube.com にも一致)。downloadable=false はDRM等で技術的・法的に対象外のサイトで、エラーではなく「対象外」として明示的に弾くために載せる。",
+  "sites": [
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "hosts": ["youtube.com", "youtu.be"],
+      "downloadable": true
+    },
+    {
+      "id": "x",
+      "name": "X",
+      "hosts": ["x.com", "twitter.com"],
+      "downloadable": true
+    },
+    {
+      "id": "nicovideo",
+      "name": "ニコニコ動画",
+      "hosts": ["nicovideo.jp", "nico.ms"],
+      "downloadable": true
+    },
+    {
+      "id": "vimeo",
+      "name": "Vimeo",
+      "hosts": ["vimeo.com"],
+      "downloadable": true
+    },
+    {
+      "id": "twitch",
+      "name": "Twitch",
+      "hosts": ["twitch.tv"],
+      "downloadable": true
+    },
+    {
+      "id": "tiktok",
+      "name": "TikTok",
+      "hosts": ["tiktok.com"],
+      "downloadable": true
+    },
+    {
+      "id": "instagram",
+      "name": "Instagram",
+      "hosts": ["instagram.com"],
+      "downloadable": true
+    },
+    {
+      "id": "netflix",
+      "name": "Netflix",
+      "hosts": ["netflix.com"],
+      "downloadable": false,
+      "reason": "DRM(Widevine)で保護されているため対象外"
+    },
+    {
+      "id": "primevideo",
+      "name": "Prime Video",
+      "hosts": ["primevideo.com"],
+      "downloadable": false,
+      "reason": "DRM(Widevine)で保護されているため対象外"
+    },
+    {
+      "id": "disneyplus",
+      "name": "Disney+",
+      "hosts": ["disneyplus.com"],
+      "downloadable": false,
+      "reason": "DRM(Widevine)で保護されているため対象外"
+    },
+    {
+      "id": "hulu-jp",
+      "name": "Hulu Japan",
+      "hosts": ["hulu.jp"],
+      "downloadable": false,
+      "reason": "DRM(Widevine)で保護されているため対象外"
+    },
+    {
+      "id": "unext",
+      "name": "U-NEXT",
+      "hosts": ["unext.jp", "video.unext.jp"],
+      "downloadable": false,
+      "reason": "DRM(Widevine)で保護されているため対象外"
+    }
+  ]
+}
