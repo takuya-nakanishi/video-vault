@@ -184,18 +184,7 @@ android screen capture -o /tmp/screen.png    # 画面確認
 ### Phase 7(未了): 実機をWi-Fiで繋ぐ
 
 要件は **Android 11(APIレベル30)以上**、端末とPCが同じWi-Fiにいること。
-
-1. 端末: 設定 > デバイス情報 > **ビルド番号を7回タップ**
-2. 設定 > システム > 開発者向けオプション > **ワイヤレスデバッグ**をON。
-   「このネットワークで常に許可」にチェック
-3. 「ペア設定コードによるデバイスのペア設定」を開く → IPアドレス:ポート と 6桁コードが出る
-4. WSLで(ペアリングは初回のみ):
-
-```bash
-adb pair 192.168.10.xx:PORT_A     # 6桁コードを入力
-adb connect 192.168.10.xx:PORT_B  # ワイヤレスデバッグ画面のメインのIP:ポート
-adb devices
-```
+手順は下の「動作確認の手順(エミュレータ / 実機)」にまとめてある。
 
 ## UIを詰めるループ
 
@@ -216,6 +205,118 @@ Layoutlibを使ってIDE内にレンダリングするため、**WSL2の中で�
 初心者には **Manual on Save**(Ctrl+Sで適用)が分かりやすい。
 
 **フルリビルドが要るもの**: 関数シグネチャの変更、関数の追加・削除、クラス階層の変更。
+
+## 動作確認の手順(エミュレータ / 実機)
+
+### どちらで何を確かめるか
+
+| 確かめたいこと | エミュレータ | 実機(Pixel 10 Pro) |
+|---|---|---|
+| 画面の見た目・レイアウト崩れ | ○ | ○ |
+| 入力に応じた候補の出し分け | ○ | ○ |
+| 内蔵ブラウザ・画面遷移 | ○ | ○ |
+| yt-dlpの起動とエラー表示 | ○(x86_64バイナリ同梱) | ○ |
+| **日本語IMEの未確定文字列** | **×** | **○(ここでしか判定できない)** |
+| YouTube/Xアプリからの共有シート | ×(アプリが入っていない) | ○ |
+| 実回線でのダウンロード・省電力による中断 | × | ○ |
+
+エミュレータにも日本語キーボードは追加できる(Play Store版イメージなのでGboardが入っている)が、
+**IMEの挙動はGboardのバージョンと端末で変わる**ため、判定は実機で行う。
+
+### エミュレータ
+
+AVDは `medium_phone`(API 36 / x86_64)が1つ。**同じAVDの二重起動は弾かれる**ので、
+起動前に `adb devices` で既に動いていないか見る。
+
+見ながら操作する(自分のターミナルから。WSLgでウィンドウが出る):
+
+```bash
+android emulator start medium_phone
+```
+
+エージェントに操作させる・画面が要らない(非対話シェルではこちらしか動かない):
+
+```bash
+sg kvm -c "$ANDROID_HOME/emulator/emulator @medium_phone \
+  -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect" &
+adb wait-for-device && adb shell getprop sys.boot_completed   # 1 になれば完了(約80秒)
+```
+
+止める:
+
+```bash
+android emulator stop medium_phone     # または adb -s emulator-5554 emu kill
+```
+
+入れて動かす・画面を見る:
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ANDROID_HOME=$HOME/android-sdk ./gradlew assembleDebug
+android install --apks=app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.saneiclover.videovault.debug/com.saneiclover.videovault.MainActivity
+android screen capture -o /tmp/screen.png       # -a を付けるとUI要素に枠とラベルが載る
+adb shell input tap X Y                          # 座標はキャプチャから読む
+adb shell input text 'youtu.be/abc123'           # 空白は %s、? は \? でエスケープ
+adb logcat -d -t 200 | grep -iE "videovault|AndroidRuntime"
+```
+
+### 実機(Pixel 10 Pro)をワイヤレスで繋ぐ
+
+USB転送(usbipd-win)は要らない。`.wslconfig` の `networkingMode=mirrored` により
+WSLが実LAN IP(`192.168.10.101`)を直接持つため、端末と同じサブネットにいる。
+**端末とPCが同じWi-Fiにいること**が唯一の前提。
+
+端末側(初回のみ):
+
+1. 設定 > デバイス情報 > **ビルド番号を7回タップ**
+2. 設定 > システム > 開発者向けオプション > **ワイヤレスデバッグ**をON。
+   「このネットワークで常に許可」にチェック
+3. **「ペア設定コードによるデバイスのペア設定」**を開く → `IP:ポート` と6桁コードが出る
+
+WSL側:
+
+```bash
+adb pair 192.168.10.xx:PORT_A      # 3.の画面のIP:ポート。6桁コードを入力。初回のみ
+adb connect 192.168.10.xx:PORT_B   # ワイヤレスデバッグ画面のメインのIP:ポート
+adb devices -l
+```
+
+**ペア設定用のポートと接続用のポートは別**。接続用ポートは端末の再起動やWi-Fi切替で変わるので、
+そのたびに `adb connect` からやり直す(`adb pair` は初回だけ)。
+
+### 2台繋がっているときは必ずデバイスを指定する
+
+エミュレータと実機が同時に見えると、コマンドが「どちらか」に飛んで混乱する。
+
+```bash
+export ANDROID_SERIAL=192.168.10.xx:PORT_B      # adb系はこれで固定される
+android install --device=$ANDROID_SERIAL --apks=app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.saneiclover.videovault.debug/com.saneiclover.videovault.MainActivity
+```
+
+`android` CLI は `ANDROID_SERIAL` を見ないので `--device` を明示する
+(`install` も `screen capture` も同じオプションを持つ)。
+迷うくらいなら**エミュレータを止めてから実機を繋ぐ**のが確実。
+
+### 実機で最初に見ること(この順で)
+
+1. **日本語IME**。入力欄に「かれの」と打ち、未確定のまま変換候補が出るか。
+   勝手に確定するなら `TextField` の技術選定から見直す(`ui-ux.md`)
+2. **共有シート**。YouTubeアプリで動画を開く → 共有 → video-vault → 候補が並んだ状態で開くか
+3. **実ダウンロード**。公開動画を1本(私的利用限定・第三者共有不可)
+4. **保存先の確認**。アプリ専用領域だが `adb shell` からは覗ける:
+   ```bash
+   adb shell ls -l /sdcard/Android/data/com.saneiclover.videovault.debug/files/downloads/
+   adb pull /sdcard/Android/data/com.saneiclover.videovault.debug/files/downloads/ /tmp/
+   ```
+5. **画面を閉じたときの中断**。既知の制約(ForegroundService未実装)を実際に踏んで確認する
+
+### 繋がらないとき
+
+- 端末とWSLが同じサブネットか(`ip -4 addr` の eth1 が `192.168.10.101`、端末も `192.168.10.x`)
+- ワイヤレスデバッグの画面を**開いたままにする**(閉じるとポートが変わることがある)
+- VPN(Tailscale等)が経路を奪っていないか。`adb connect` は端末のLAN IPへ直接出る必要がある
+- それでも駄目なら `adb kill-server && adb start-server` からやり直す
 
 ## バージョン方針: 今は上げない
 
