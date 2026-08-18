@@ -78,6 +78,9 @@ fun BrowserScreen(
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    // 素のWebViewはUAに「; wv」が入り、GoogleがJS無効扱いの「enablejs」ページへ
+                    // 飛ばして検索結果が灰色の空白になる(2026-08-19にPixel実機で発生)。目印を外す
+                    settings.userAgentString = settings.userAgentString.replace("; wv", "")
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                             currentUrl = url
