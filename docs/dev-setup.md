@@ -208,6 +208,21 @@ Layoutlibを使ってIDE内にレンダリングするため、**WSL2の中で�
 
 ## 動作確認の手順(エミュレータ / 実機)
 
+### 運用方針(2026-08-18決定)
+
+**人間の動作確認は実機(Pixel 10 Pro)で行う。PC上での対話的エミュレーションはしない。**
+
+- コーディングの大部分はエージェント(Claude/Codex)が担うため、人間がPC画面でアプリを
+  操作する頻度は低い。作ってもらったアプリを実機で都度動かせば足りる
+- これによりWindows側へのSDK導入(ネスト仮想化を避ける案)は**不要になった**。
+  Windows側の空きメモリ8GBで足りるかの検証も不要
+- WSL内のヘッドレスエミュレータは**エージェントの自動確認用として維持**する。
+  遅さは無人運転では実害にならない
+- ウィンドウ付きエミュレータは封印はしないが、ネスト仮想化+ソフトウェア描画+WSLg転送の
+  三重の遅さがあり実用に向かない(2026-08-18実測)
+
+ビルド→実機インストール→起動は `scripts/deploy-device.sh` に1コマンド化してある。
+
 ### どちらで何を確かめるか
 
 | 確かめたいこと | エミュレータ | 実機(Pixel 10 Pro) |
@@ -310,6 +325,36 @@ adb shell am start -n com.saneiclover.videovault.debug/com.saneiclover.videovaul
    adb pull /sdcard/Android/data/com.saneiclover.videovault.debug/files/downloads/ /tmp/
    ```
 5. **画面を閉じたときの中断**。既知の制約(ForegroundService未実装)を実際に踏んで確認する
+
+### 別LANから実機を使う(リモート開発時)
+
+Surface(この開発機)にremote-controlで接続していて、**実機とSurfaceが同じWi-Fiにいない**場合。
+素のワイヤレスデバッグは同一LAN前提だが、**両者ともTailscaleに登録済み**なので経路は作れる。
+
+| 機器 | tailnet上の名前 | IP |
+|---|---|---|
+| Surface(この開発機) | `sc02-surface` | `100.126.119.49` |
+| Pixel 10 Pro | `pixel-10-pro-xl` | `100.91.182.103` |
+
+手順:
+
+1. Pixel側で**Tailscaleアプリを開いて接続をON**にする(普段は切れている)
+2. Pixel側でワイヤレスデバッグをON → ペア設定コードの画面を開く
+3. WSLから、**画面に出るwlanのIPではなくPixelのTailscale IP**+画面のポートで叩く:
+
+```bash
+adb pair 100.91.182.103:PORT_A     # 6桁コード入力(初回のみ)
+adb connect 100.91.182.103:PORT_B  # ワイヤレスデバッグ画面のメインのポート
+```
+
+**注意(未検証)**: ペアリング用の待受がwlanインターフェースにしか張られておらず、
+VPN越しのペアリングに失敗する報告が世間にはある。その場合の確実な迂回:
+**同一LANにいるときに一度だけペアリング**しておけば(鍵交換は初回のみ)、
+以後の `adb connect` はTailscale越しで通る。
+
+**adbなしの応急手段**: IME確認などアプリを触るだけなら、debug APKをprivateリポジトリの
+GitHub Releaseに置き、Pixelのブラウザでダウンロード→サイドロードでも足りる
+(`gh release create` を使う。ログ取得・自動操作はできない)。
 
 ### 繋がらないとき
 
