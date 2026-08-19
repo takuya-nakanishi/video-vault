@@ -15,8 +15,10 @@
   youtubedl-androidはpython・ffmpegのx86_64バイナリも同梱しており、
   **エミュレータでもyt-dlpは実際に起動する**(2026-08-17実測)。ただし出荷先は実機arm64なので、
   最終確認は実機で行う
-- 依存バージョンは `gradle/libs.versions.toml` に集約。**今は上げない**。
-  Gradle・AGP・Kotlin・Compose Compilerは4点セットで動かす(`docs/dev-setup.md`「バージョン方針」)
+- 依存バージョンは `gradle/libs.versions.toml` に集約。**Gradle・AGP・Kotlin・Composeは今は上げない**
+  (4点セットで動かす。`docs/dev-setup.md`「バージョン方針」)
+- **youtubedl-androidだけは例外的に上げる**。YouTube側の変化に追随する必要があり、
+  古いままだとダウンロードが動かなくなる。現行 0.18.1(QuickJS同梱。後述)
 
 ## ビルド・実行
 
@@ -57,6 +59,43 @@ ui/        Compose。画面は状態を持たず、状態は VideoVaultViewModel
 - 状態は Flow ではなく Compose のスナップショット状態(`mutableStateOf`)で持つ。
   **入力欄の値を非同期に戻すと日本語IMEの未確定文字列が確定させられる**ため、同期更新にしている
 
+## yt-dlp運用の要点(2026-08-19確立・ここが動かないとアプリが無価値になる)
+
+YouTubeダウンロードは**3つの原因が層をなして壊れる**。全部潰した状態が現在。順に理解しておくこと。
+
+1. **同梱yt-dlpは数週間で陳腐化する**。症状は `Precondition check failed` / `Please sign in`。
+   → 初回ダウンロード時に `YoutubeDL.updateYoutubeDL` で本体を更新する(実装済み)
+2. **yt-dlpはYouTube処理に外部JavaScriptランタイムを要求する**(EJS。既定はDenoでAndroidに無い)。
+   症状は `No supported JavaScript runtime could be found` + `403 Forbidden`。
+   → **youtubedl-android 0.18.1 が同梱するQuickJS(`libqjs.so`)が解**。0.17.2には入っていない。
+   **ライブラリが `--js-runtimes quickjs:<パス>` を内部で付与するので、自分で同名オプションを渡さないこと**
+   (パス無しで渡すと自動付与を壊して403に戻る。実際に踏んだ)
+3. **yt-dlpの安定版は修正が数週間遅れる**。2を直しても403が残った(yt-dlp #17456)。
+   → 更新チャンネルは **nightly**(`UpdateChannel._NIGHTLY`)。自分専用でPlay配信もしないため、
+   鮮度を安定性より優先してよい
+
+**将来また403やダウンロード失敗が出たら、まずこの3層を上から確認する。**
+エラー文言に `JavaScript runtime` が含まれるかどうかが、2と3の切り分けになる。
+
+## 動作確認(2026-08-19確立)
+
+**実機へ配る前に、必ずエミュレータで煙試験を通す。** 人の目視に頼らず、
+uiautomatorのビューツリー(テキスト)で判定するので、エージェントが単独で回せる。
+
+```bash
+scripts/smoke-test.sh                  # 全14シナリオ(正常系・異常系・実ダウンロード)
+scripts/smoke-test.sh --only-download  # 実ダウンロードだけ(原因追跡の反復用)
+scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ
+scripts/connect-pixel.sh 38705         # 実機へadb接続(別LANはTailscale経由。MTU対処込み)
+scripts/deploy-device.sh               # ビルド→実機インストール→起動
+```
+
+- 煙試験はエミュレータ限定(実機を誤って操作しない保険を入れてある)
+- **合格判定は厳しくする**。「downloadsに何かファイルができたら成功」にしていたところ、
+  69バイトの `.ytdl`(yt-dlpの内部レジューム情報)を成果物と誤認して**偽の合格**を出した。
+  拡張子とサイズ(100KB超の動画ファイル)まで見ること
+- エミュレータで確かめられないもの: **日本語IME**・共有シート・実回線での中断挙動。これらは実機で
+
 ## MVPスコープ(v0.1)
 
 - URL入力(またはYouTube/Xアプリの共有シートから受取)→ yt-dlpでダウンロード → アプリ専用外部ストレージ `files/downloads/` へ保存
@@ -86,6 +125,6 @@ Googleは「開発者が誰かを確認するだけで、アプリの内容は�
    ここが破綻するならUIの技術選定そのものを見直す(`docs/ui-ux.md`)
 2. 保存先がアプリ専用領域(`Android/data/`配下)のため他アプリから見えにくい → MediaStore経由で公共`Download/`へ書き出す対応を次版で(サイドロードなので`MANAGE_EXTERNAL_STORAGE`権限も選択肢)
 3. ダウンロード中に画面を閉じると中断される → ForegroundServiceへの移行を次版で。今は1件ずつしか流せない
-4. ダウンロード詳細画面・設定画面が無い。再生・共有・再試行・yt-dlp本体の更新(`YoutubeDL.updateYoutubeDL`)はいずれも未実装
+4. ダウンロード詳細画面・設定画面が無い。再生・共有・再試行は未実装(yt-dlp本体の更新は実装済み)
 5. GFS(有料会員サイト)は技術調査未了(DRM有無・Cookie認証でのyt-dlp可否)。調査はPC側yt-dlpで先に実施し、通る場合のみ判定表へ追加
 6. 文字起こし・分析はアプリに持たせない(PC/クラウド側の後段。llm-wiki側パイプラインと接続)
