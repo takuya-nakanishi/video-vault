@@ -15,9 +15,12 @@ export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform
 PKG=com.saneiclover.videovault.debug
 ACT="$PKG/com.saneiclover.videovault.MainActivity"
 DL_DIR="/sdcard/Android/data/$PKG/files/downloads"
-# 検証用の実在動画(yt-dlp公式テスト動画 BaW_jenozKc は Video unavailable になるため使わない)
-TEST_VIDEO="https://youtu.be/GTpUEmf28Pc"
+# 19秒の定番動画(YouTube最古"Me at the zoo")。公開が永続的で短く、煙試験に向く。
+# yt-dlp公式テスト動画 BaW_jenozKc は Video unavailable になるため使わない
+TEST_VIDEO="https://youtu.be/jNQXAC9IVRw"
 SKIP_DOWNLOAD=${1:-}
+ONLY_DOWNLOAD=""
+[[ "$SKIP_DOWNLOAD" == "--only-download" ]] && ONLY_DOWNLOAD=1
 
 PASS=0; FAIL=0
 ok()   { echo "  ✅ $1"; PASS=$((PASS+1)); }
@@ -72,6 +75,7 @@ android install --device="$SERIAL" --apks=app/build/outputs/apk/debug/app-debug.
   && ok "インストール成功" || { ng "インストール失敗"; exit 1; }
 adb shell rm -rf "$DL_DIR" 2>/dev/null
 
+if [[ -z "$ONLY_DOWNLOAD" ]]; then
 step "シナリオ1[正常系]: 起動してホーム画面が出る"
 relaunch
 has_text "video-vault"        && ok "タイトル表示" || ng "タイトルが出ない"
@@ -111,6 +115,8 @@ else
   ng "ダウンロードボタンをタップできない"
 fi
 
+fi  # ONLY_DOWNLOAD
+
 if [[ "$SKIP_DOWNLOAD" == "--skip-download" ]]; then
   echo; echo "シナリオ7[実ダウンロード]は --skip-download のため省略"
 else
@@ -121,11 +127,13 @@ else
     got=""
     for i in $(seq 1 60); do
       sleep 5
-      if adb shell "ls $DL_DIR 2>/dev/null" | grep -qvE '^\s*$|\.part$'; then got=1; break; fi
+      # .ytdl(yt-dlpの内部レジューム情報)や.part(未完了)を成果物と誤認しない
+      found=$(adb shell "find $DL_DIR -type f -size +100k \\( -name '*.mp4' -o -name '*.webm' -o -name '*.mkv' -o -name '*.m4a' \\) 2>/dev/null" | tr -d '\r')
+      if [[ -n "$found" ]]; then got="$found"; break; fi
       has_text "失敗" && break
     done
     if [[ -n "$got" ]]; then
-      ok "ファイルを取得した: $(adb shell ls -la $DL_DIR | tail -1)"
+      ok "動画本体を取得した: $(adb shell ls -la \"$got\" | tr -d '\r')"
     else
       ng "取得できなかった"
       echo "  --- 画面のエラー全文 ---"

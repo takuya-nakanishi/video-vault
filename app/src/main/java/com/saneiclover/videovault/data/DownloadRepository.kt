@@ -95,8 +95,15 @@ class DownloadRepository(
     private fun updateYtdlp(onProgress: (percent: Float?, line: String) -> Unit) {
         if (ytdlpUpdated) return
         onProgress(null, "yt-dlp本体を更新中(初回のみ・数十秒)…")
-        runCatching { YoutubeDL.getInstance().updateYoutubeDL(context.applicationContext) }
-            .onSuccess { ytdlpUpdated = true }
+        runCatching {
+            // nightlyを使う。YouTubeの変化への修正はまずnightlyに入り、安定版は数週間遅れる。
+            // 実際に安定版では403 Forbiddenで落ちた(yt-dlp #17456。nightlyで修正済みとメンテナが回答)。
+            // このアプリは自分専用でPlay配信もしないため、鮮度を安定性より優先してよい
+            YoutubeDL.getInstance().updateYoutubeDL(
+                context.applicationContext,
+                YoutubeDL.UpdateChannel._NIGHTLY,
+            )
+        }.onSuccess { ytdlpUpdated = true }
     }
 
     /**
