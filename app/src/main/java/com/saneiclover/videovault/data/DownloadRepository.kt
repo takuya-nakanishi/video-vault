@@ -48,6 +48,10 @@ class DownloadRepository(
             val request = YoutubeDLRequest(url).apply {
                 addOption("-o", "${outputDir.absolutePath}/%(title)s.%(ext)s")
                 addOption("--no-mtime")
+                // yt-dlpはYouTubeの署名解読に外部JavaScriptランタイムを要求するようになり、
+                // 無いと403 Forbiddenで落ちる(2026-08-19実測)。ライブラリ0.18.1が同梱する
+                // QuickJSを使うが、`--js-runtimes quickjs:<パス>` はライブラリが内部で付与するため
+                // ここでは指定しない(パス無しで自前指定すると、その自動付与を壊して403に戻る)
                 cookieFile?.let { addOption("--cookies", it.absolutePath) }
             }
             YoutubeDL.getInstance().execute(request, processId) { percent, _, line ->
