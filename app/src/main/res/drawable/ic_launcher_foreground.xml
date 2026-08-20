@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  前景: 「再生ボタンでできた下向き矢印」。再生(▶)を90°倒して矢印の頭にし、上に軸、下に受け皿。
+  動画を取ってくる、を一つの形で言う。中央66dpの安全域(中心54, 半径33)に収めてある。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- 軸 -->
+    <path android:pathData="M54 27v21" android:strokeColor="#FFFFFFFF" android:strokeWidth="9" android:strokeLineCap="round"/>
+    <!-- 矢印の頭 = 再生マーク(丸角は同色ストロークで付ける) -->
+    <path android:pathData="M36 47h36L54 66z" android:fillColor="#FFFFFFFF" android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineJoin="round"/>
+    <!-- 受け皿 -->
+    <path android:pathData="M38 77h32" android:strokeColor="#FFFFFFFF" android:strokeWidth="7" android:strokeLineCap="round"/>
+</vector>

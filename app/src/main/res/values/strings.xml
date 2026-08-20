@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">video-vault</string>
+    <!-- ランチャーに出る表示名(論理名)。パッケージ名 com.saneiclover.videovault(物理名)はこのままで変えない -->
+    <string name="app_name">ゲットVIDEO</string>
 </resources>

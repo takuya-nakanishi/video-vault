@@ -32,6 +32,12 @@ class SiteCatalog(val rules: List<SiteRule>) {
         }
     }
 
+    /** 履歴に残すサイト名。判定表に無いサイトはホスト名(`www.` 抜き)で代用する。 */
+    fun nameForUrl(url: String): String {
+        val host = InputClassifier.hostOf(url) ?: return url
+        return ruleFor(host)?.name ?: host.removePrefix("www.")
+    }
+
     companion object {
         /** 判定表を読めなかったときの退避。全URLが「ブラウザで開く」に落ちる。 */
         val EMPTY = SiteCatalog(emptyList())

@@ -1,30 +1,62 @@
 package com.saneiclover.videovault.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
- * 色・タイポグラフィ・余白は自分で設計せず Material 3 に全面的に乗る(ui-ux.md)。
- * Android 12以降は端末の壁紙から生成される動的カラーをそのまま使う。
+ * ゲットVIDEOのテーマ。Material 3 のロールに固有配色([LightColors]/[DarkColors])を流し込む。
+ *
+ * 動的カラー(壁紙追従)は使わない(2026-08-21決定)。アイコンと画面の色を一致させ、
+ * どの端末でも同じ見た目にするため。書体は端末のシステムフォントのまま
+ * (日本語はNoto Sans CJK。フォントを同梱すると日本語だけで十数MB増える)。
+ * 代わりに太さと大きさの差を強めにつけて階層を作る。
  */
 @Composable
 fun VideoVaultTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    val context = LocalContext.current
-    val colorScheme = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        darkTheme -> darkColorScheme()
-        else -> lightColorScheme()
-    }
-    MaterialTheme(colorScheme = colorScheme, content = content)
+    MaterialTheme(
+        colorScheme = if (darkTheme) DarkColors else LightColors,
+        typography = AppTypography,
+        shapes = AppShapes,
+        content = content,
+    )
 }
+
+/** 角は大きめに。入力欄は完全な丸(ピル)、カードは 20dp。 */
+private val AppShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp),
+)
+
+private val AppTypography = Typography().let { base ->
+    base.copy(
+        headlineLarge = base.headlineLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
+        headlineMedium = base.headlineMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.25).sp),
+        headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+        titleLarge = base.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+        titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        titleSmall = base.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+        labelLarge = base.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+    )
+}
+
+/** 画面上部のワードマーク用。見出しより一段強く、詰める。 */
+val WordmarkStyle: TextStyle = TextStyle(
+    fontSize = 26.sp,
+    lineHeight = 32.sp,
+    fontWeight = FontWeight.Black,
+    letterSpacing = (-0.5).sp,
+)

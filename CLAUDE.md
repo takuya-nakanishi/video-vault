@@ -44,7 +44,7 @@ android install --apks=app/build/outputs/apk/debug/app-debug.apk
 - 実機デバッグはワイヤレスデバッグ(`adb pair` → `adb connect`)。USB転送(usbipd-win)は不要
 - releaseビルドの署名: 初回リリース時に `keytool -genkeypair -v -keystore videovault-release.jks -alias videovault -keyalg RSA -keysize 4096 -validity 10950` で生成。keystoreとパスワードは**gitに入れない**(gitignore済み)。実体は端末ローカル+Google Driveバックアップ。`keystore.properties` から読む方式で `app/build.gradle.kts` に後日組み込む
 
-## コード構成(2026-08-17)
+## コード構成(2026-08-21)
 
 **UI層はダミーデータで描けること**を最優先に分けてある。Compose Previewはネットワークもファイルも
 触れないため、後から直すと大工事になる(`docs/dev-setup.md`)。
@@ -52,14 +52,23 @@ android install --apks=app/build/outputs/apk/debug/app-debug.apk
 ```
 domain/    Android非依存の純粋なKotlin。単体テストの対象
            InputClassifier(入力→候補の判定)/ SiteCatalog / Suggestion / DownloadedFile
+           Bookmark(既定4件も)/ HistoryEntry+HistoryLog(履歴の台帳)/
+           YtdlpOutput(yt-dlp出力からタイトル抽出)/ RelativeTime(「3時間前」「昨日」)
 data/      Androidとyt-dlpに触る層
            SiteCatalogLoader(assets/site_patterns.json)/ DownloadRepository / CookieJar
+           BookmarkStore・HistoryStore(files/*.json。JsonFileで原子的に書く)
 ui/        Compose。画面は状態を持たず、状態は VideoVaultViewModel が1つで持つ
-           home/HomeScreen(単一入力欄)/ browser/BrowserScreen(WebView)/ theme/
+           home/HomeScreen(入力欄+ブックマーク+最近の履歴)/ browser/BrowserScreen(WebView+栞)/
+           history/HistoryScreen / files/FilesScreen / components/(モノグラム・履歴行・シート・ダイアログ)/
+           theme/(固有配色 Color.kt。動的カラーは使わない)
+res/       drawable/ic_*.xml は自作の線アイコン(24dp・2dp線)。ic_launcher_* がアプリアイコン(ベクタのみ)
 ```
 
 - **URLパターン表は `app/src/main/assets/site_patterns.json`**。サイトが増えてもコードは触らない
-- 判定ロジックのテストは `app/src/test/`。`./gradlew testDebugUnitTest` で実機なしに回る
+- 判定・履歴・タイトル抽出・時刻表示のテストは `app/src/test/`。`./gradlew testDebugUnitTest` で実機なしに回る
+- **表示名は「ゲットVIDEO」**(`res/values/strings.xml`)。パッケージ名 `com.saneiclover.videovault` は
+  物理名で、変えるとデータを引き継げない別アプリになるため変えない
+- 色・アイコン・画面構造の決定は `docs/ui-ux.md`「デザインシステム」が正
 - 状態は Flow ではなく Compose のスナップショット状態(`mutableStateOf`)で持つ。
   **入力欄の値を非同期に戻すと日本語IMEの未確定文字列が確定させられる**ため、同期更新にしている
 
@@ -87,9 +96,10 @@ YouTubeダウンロードは**3つの原因が層をなして壊れる**。全�
 uiautomatorのビューツリー(テキスト)で判定するので、エージェントが単独で回せる。
 
 ```bash
-scripts/smoke-test.sh                  # 全14シナリオ(正常系・異常系・実ダウンロード)
-scripts/smoke-test.sh --only-download  # 実ダウンロードだけ(原因追跡の反復用)
+scripts/smoke-test.sh                  # 全13シナリオ(正常系・異常系・ブックマーク・履歴・実ダウンロード)
+scripts/smoke-test.sh --only-download  # 実ダウンロードとその履歴だけ(原因追跡の反復用)
 scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ
+scripts/screenshots.sh                 # 全画面のスクリーンショット(人に見せる用。判定はしない)
 scripts/connect-pixel.sh 38705         # 実機へadb接続(別LANはTailscale経由。MTU対処込み)
 scripts/deploy-device.sh               # ビルド→実機インストール→起動
 ```
@@ -129,6 +139,6 @@ Googleは「開発者が誰かを確認するだけで、アプリの内容は�
    ここが破綻するならUIの技術選定そのものを見直す(`docs/ui-ux.md`)
 2. 保存先がアプリ専用領域(`Android/data/`配下)のため他アプリから見えにくい → MediaStore経由で公共`Download/`へ書き出す対応を次版で(サイドロードなので`MANAGE_EXTERNAL_STORAGE`権限も選択肢)
 3. ダウンロード中に画面を閉じると中断される → ForegroundServiceへの移行を次版で。今は1件ずつしか流せない
-4. ダウンロード詳細画面・設定画面が無い。再生・共有・再試行は未実装(yt-dlp本体の更新は実装済み)
+4. 設定画面が無い。再生・共有は未実装(再試行は履歴から、yt-dlp本体の更新は実装済み)
 5. GFS(有料会員サイト)は技術調査未了(DRM有無・Cookie認証でのyt-dlp可否)。調査はPC側yt-dlpで先に実施し、通る場合のみ判定表へ追加
 6. 文字起こし・分析はアプリに持たせない(PC/クラウド側の後段。llm-wiki側パイプラインと接続)
