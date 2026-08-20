@@ -75,6 +75,8 @@ class MainActivity : ComponentActivity() {
                             onCopy = viewModel::onCopyHistoryUrl,
                             onDelete = viewModel::onDeleteHistory,
                             onClearAll = viewModel::onClearHistory,
+                            message = viewModel.home.message,
+                            onDismissMessage = viewModel::onDismissMessage,
                         )
 
                         Screen.Files -> FilesScreen(

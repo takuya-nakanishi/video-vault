@@ -33,6 +33,7 @@ import com.saneiclover.videovault.ui.components.ConfirmDialog
 import com.saneiclover.videovault.ui.components.EmptyState
 import com.saneiclover.videovault.ui.components.HistoryActionSheet
 import com.saneiclover.videovault.ui.components.HistoryRow
+import com.saneiclover.videovault.ui.components.MessageBanner
 
 /**
  * ダウンロード履歴の全件。日ごとに見出しを挟む。
@@ -48,6 +49,9 @@ fun HistoryScreen(
     onDelete: (HistoryEntry) -> Unit,
     onClearAll: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 「URLをコピーした」などの結果。ホームと同じ帯で見せる(この画面で起こした操作の反応はこの画面で返す) */
+    message: String? = null,
+    onDismissMessage: () -> Unit = {},
     now: Long = System.currentTimeMillis(),
 ) {
     var selected by remember { mutableStateOf<HistoryEntry?>(null) }
@@ -76,21 +80,29 @@ fun HistoryScreen(
             )
         },
     ) { padding ->
-        if (history.isEmpty()) {
-            EmptyState(
-                icon = R.drawable.ic_history,
-                title = "履歴はまだない",
-                body = "ダウンロードすると、どのサイトから何を取ったかがここに残る。",
-                modifier = Modifier.padding(padding),
-            )
-            return@Scaffold
-        }
-
         val groups = history.groupBy { RelativeTime.dayKey(it.startedAt) }
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(bottom = 32.dp),
         ) {
+            message?.let { text ->
+                item(key = "message") {
+                    MessageBanner(
+                        message = text,
+                        onDismiss = onDismissMessage,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+            }
+            if (history.isEmpty()) {
+                item(key = "empty") {
+                    EmptyState(
+                        icon = R.drawable.ic_history,
+                        title = "履歴はまだない",
+                        body = "ダウンロードすると、どのサイトから何を取ったかがここに残る。",
+                    )
+                }
+            }
             groups.forEach { (day, entries) ->
                 item(key = "day-$day") {
                     Text(

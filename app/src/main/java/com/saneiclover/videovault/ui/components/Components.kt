@@ -275,7 +275,8 @@ fun BookmarkDialog(
             }
         },
         confirmButton = {
-            FilledTonalButton(onClick = { onConfirm(name, url) }, enabled = url.isNotBlank()) { Text("追加") }
+            // ホームの「追加」と同じ文言にしない(自動試験がテキストでボタンを特定するため)
+            FilledTonalButton(onClick = { onConfirm(name, url) }, enabled = url.isNotBlank()) { Text("保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("やめる") } },
     )

@@ -26,10 +26,12 @@ import com.saneiclover.videovault.domain.YtdlpOutput
 import com.saneiclover.videovault.ui.home.DownloadJob
 import com.saneiclover.videovault.ui.home.HomeUiState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -53,20 +55,33 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
     var screen by mutableStateOf<Screen>(Screen.Home)
         private set
 
-    private var historyLog = HistoryLog()
+    private var historyLog: HistoryLog
     private var processId: String? = null
     private var cancelRequested = false
 
+    /**
+     * 永続化は**この1本のスレッド**でしか行わない。保存のたびに独立したIO coroutineを起こすと、
+     * 同じ一時ファイルを取り合って古い状態が最後に残り得る(2026-08-21 Codexレビュー指摘)。
+     * 単一スレッドならFIFOで、最後に書かれるのは必ず最新の状態になる。
+     */
+    private val persistExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "videovault-persist") }
+    private val persist = persistExecutor.asCoroutineDispatcher()
+
     init {
-        viewModelScope.launch {
-            val now = System.currentTimeMillis()
-            val (bookmarks, log) = withContext(Dispatchers.IO) {
-                bookmarkStore.load(now) to historyStore.load(now)
-            }
-            historyLog = log
-            home = home.copy(bookmarks = bookmarks, history = log.entries)
-        }
+        // 起動時の読み込みは同期で行う。非同期にすると、共有シート起動→即ダウンロードのように
+        // 読み込み完了前に状態が更新されたとき、遅れて届いた読み込み結果がそれを上書きして消す
+        // (同上の指摘)。ファイルは数十KB以下のJSONで、読むのに数msしかかからない
+        val now = System.currentTimeMillis()
+        val bookmarks = bookmarkStore.load(now)
+        historyLog = historyStore.load(now)
+        home = home.copy(bookmarks = bookmarks, history = historyLog.entries)
         refreshDownloads()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // 書き込み待ちのタスクは流し切ってから閉じる(shutdownNowにしない)
+        persistExecutor.shutdown()
     }
 
     // --- 入力欄 ---
@@ -191,7 +206,7 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun saveBookmarks(bookmarks: List<Bookmark>) {
         home = home.copy(bookmarks = bookmarks)
-        viewModelScope.launch(Dispatchers.IO) { bookmarkStore.save(bookmarks) }
+        viewModelScope.launch(persist) { bookmarkStore.save(bookmarks) }
     }
 
     private fun sameUrl(a: String, b: String) = a.trimEnd('/') == b.trimEnd('/')
@@ -236,7 +251,7 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
     private fun commitHistory(log: HistoryLog) {
         historyLog = log
         home = home.copy(history = log.entries)
-        viewModelScope.launch(Dispatchers.IO) { historyStore.save(log) }
+        viewModelScope.launch(persist) { historyStore.save(log) }
     }
 
     // --- ダウンロード ---

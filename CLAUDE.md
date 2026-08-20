@@ -96,7 +96,7 @@ YouTubeダウンロードは**3つの原因が層をなして壊れる**。全�
 uiautomatorのビューツリー(テキスト)で判定するので、エージェントが単独で回せる。
 
 ```bash
-scripts/smoke-test.sh                  # 全13シナリオ(正常系・異常系・ブックマーク・履歴・実ダウンロード)
+scripts/smoke-test.sh                  # 全17シナリオ(正常系・異常系・ブックマーク・履歴・永続化・実ダウンロード)
 scripts/smoke-test.sh --only-download  # 実ダウンロードとその履歴だけ(原因追跡の反復用)
 scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ
 scripts/screenshots.sh                 # 全画面のスクリーンショット(人に見せる用。判定はしない)
