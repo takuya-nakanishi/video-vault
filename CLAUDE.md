@@ -100,6 +100,7 @@ scripts/smoke-test.sh                  # 全17シナリオ(正常系・異常系
 scripts/smoke-test.sh --only-download  # 実ダウンロードとその履歴だけ(原因追跡の反復用)
 scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ
 scripts/screenshots.sh                 # 全画面のスクリーンショット(人に見せる用。判定はしない)
+scripts/webview-inspect.sh             # 内蔵ブラウザの遷移ログとDevTools(実機で白画面が出たときに最初に見る)
 scripts/connect-pixel.sh 38705         # 実機へadb接続(別LANはTailscale経由。MTU対処込み)
 scripts/deploy-device.sh               # ビルド→実機インストール→起動
 ```

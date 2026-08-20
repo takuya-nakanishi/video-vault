@@ -180,6 +180,13 @@ Cookieを渡す方式なら、サイト対応の追随は yt-dlp 本体に任せ
 
 - **targetSdk 35 はedge-to-edgeが強制される。** 対応しないとステータスバーと
   ナビゲーションバーの下に中身が潜り込む(実際に潜った)。ルートに `safeDrawingPadding()` を入れて解消
+- **サイトのネイティブアプリ誘導はWebView内で止める。** NewsPicksのGoogleログイン後、
+  コールバック画面が真っ白で止まった(2026-08-21 Pixel実機)。端末にNewsPicksアプリが入っており、
+  ログイン後に `newspicks://` / `intent://` でアプリへ飛ばそうとする遷移をWebViewが開けないのが
+  最有力の原因。http(s)以外のスキームは `shouldOverrideUrlLoading` で横取りし、外のアプリは開かず
+  (開くとCookieが使えず本アプリの目的を果たせない)、帯で知らせて「サイトのトップへ」で復帰させる。
+  遷移・エラー・JSコンソールは Logcat `VideoVaultBrowser` に出し、debugビルドはDevToolsを有効にした
+  (`scripts/webview-inspect.sh`)。**実機で白画面が出たら、まずこのログを見る**
 - **システムバーのアイコン色は自動では合わない。** ライトモードで時計や電池が白く沈んでいた
   (2026-08-21のスクリーンショットで発覚)。`enableEdgeToEdge()` を `setContent` の前で呼ぶと
   ライト/ダークに応じて切り替わる

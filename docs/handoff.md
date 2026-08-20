@@ -55,6 +55,13 @@ YouTubeアプリ → 共有 → ゲットVIDEO → 候補が並んだ状態で�
 
 ### 4. NewsPicks・TikTokの実地検証
 
+**NewsPicksはGoogleログイン後のコールバックで白画面になった**(2026-08-21 実機)。
+端末にNewsPicksアプリが入っているため、ログイン後に `newspicks://` / `intent://` でアプリへ
+飛ばす遷移をWebViewが開けない、が最有力の見立て。対処として http(s) 以外のスキームを
+WebView内で止めて帯を出す実装と、遷移ログ(Logcat `VideoVaultBrowser`)・DevTools有効化を入れた。
+**再現してもらったら `scripts/webview-inspect.sh` でログとページの状態を見る**
+(見立てが外れていても、ここに原因が出る)。
+
 ブックマークから飛ぶ導線はできたが、**そのサイトで実際にダウンロードが通るかは未検証**。
 - TikTokは判定表(`site_patterns.json`)に `downloadable: true` で載っているので、動画URLを貼れば直接走る
 - NewsPicksは判定表に無い(yt-dlpに専用extractorが無い)。内蔵ブラウザでログイン→「このページをダウンロード」の
