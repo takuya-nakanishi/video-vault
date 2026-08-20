@@ -6,6 +6,10 @@
 商用アプリ `apps/personal-ai`(Play配信)とは配布形態も機能境界も異なる二層構造(モノレポCLAUDE.md参照)。
 **このアプリのDL系コードをpersonal-aiへ持ち込まない**。本アプリの役割は自分用の実用+知識化パイプラインの実験場。
 
+> **作業を始める前に [`docs/handoff.md`](docs/handoff.md) を読む。**
+> 現在地・次のアクション・環境の事実(接続先や既知のつまずき)がそこにある。
+> このファイルは「変わらない規約」、handoffは「いまの状況」。状況が変わったらhandoffを更新する。
+
 ## スタック(2026-08-14確定)
 
 - Kotlin + Jetpack Compose + youtubedl-android(yt-dlpラッパー、`io.github.junkfood02.youtubedl-android`)
