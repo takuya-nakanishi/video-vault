@@ -21,10 +21,12 @@ import com.saneiclover.videovault.domain.HistoryEntry
 import com.saneiclover.videovault.domain.HistoryLog
 import com.saneiclover.videovault.domain.HistoryStatus
 import com.saneiclover.videovault.domain.InputClassifier
+import com.saneiclover.videovault.domain.Quality
 import com.saneiclover.videovault.domain.Suggestion
 import com.saneiclover.videovault.domain.YtdlpOutput
 import com.saneiclover.videovault.ui.home.DownloadJob
 import com.saneiclover.videovault.ui.home.HomeUiState
+import com.saneiclover.videovault.ui.home.PendingDownload
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
@@ -48,6 +50,8 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
     private val classifier = InputClassifier(catalog)
     private val bookmarkStore = BookmarkStore(application)
     private val historyStore = HistoryStore(application)
+    /** 画質の既定など、小さな設定。ファイルを増やさず SharedPreferences で足りる */
+    private val prefs = application.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
     var home by mutableStateOf(HomeUiState())
         private set
@@ -74,7 +78,11 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
         val now = System.currentTimeMillis()
         val bookmarks = bookmarkStore.load(now)
         historyLog = historyStore.load(now)
-        home = home.copy(bookmarks = bookmarks, history = historyLog.entries)
+        home = home.copy(
+            bookmarks = bookmarks,
+            history = historyLog.entries,
+            defaultQuality = Quality.fromName(prefs.getString(PREF_QUALITY, null)),
+        )
         refreshDownloads()
     }
 
@@ -107,7 +115,7 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onSuggestionClick(suggestion: Suggestion) {
         when (suggestion) {
-            is Suggestion.Download -> startDownload(suggestion.url, cookieFile = null)
+            is Suggestion.Download -> requestDownload(suggestion.url, cookieFile = null)
             is Suggestion.OpenInBrowser -> screen = Screen.Browser(suggestion.url)
             is Suggestion.WebSearch -> screen = Screen.Browser(InputClassifier.searchUrl(suggestion.query))
             is Suggestion.Unsupported -> home = home.copy(
@@ -220,7 +228,7 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
     fun onBrowserDownloadRequest(pageUrl: String, cookieHeader: String?) {
         val cookieFile = CookieJar.write(getApplication<Application>().cacheDir, pageUrl, cookieHeader)
         screen = Screen.Home
-        startDownload(pageUrl, cookieFile)
+        requestDownload(pageUrl, cookieFile)
     }
 
     /**
@@ -234,13 +242,45 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
         val fallback = mediaSrc.takeIf { it.startsWith("http", ignoreCase = true) && it != target }
         val cookieFile = CookieJar.write(cacheDir, target, cookieHeader)
         screen = Screen.Home
-        startDownload(
+        requestDownload(
             url = target,
             cookieFile = cookieFile,
             retryWith = fallback?.let { media ->
                 { CookieJar.write(cacheDir, media, cookieHeader) to media }
             },
         )
+    }
+
+    // --- 画質の選択 ---
+
+    /**
+     * どの入口から来ても、まず画質シートを出す(2026-08-21・人間の依頼)。
+     * 実行中が居るときはシートを出さず断る。
+     */
+    private fun requestDownload(url: String, cookieFile: File?, retryWith: (() -> Pair<File?, String>)? = null) {
+        if (home.job != null) {
+            cookieFile?.delete()
+            home = home.copy(message = "ダウンロードは1件ずつ実行する(実行中のものを待つか中断する)。")
+            return
+        }
+        home.pendingDownload?.cookieFile?.delete()
+        home = home.copy(
+            pendingDownload = PendingDownload(url, catalog.nameForUrl(url), cookieFile, retryWith),
+            message = null,
+        )
+    }
+
+    fun onQualityChosen(quality: Quality) {
+        val pending = home.pendingDownload ?: return
+        prefs.edit().putString(PREF_QUALITY, quality.name).apply()
+        home = home.copy(pendingDownload = null, defaultQuality = quality)
+        startDownload(pending.url, pending.cookieFile, quality, pending.retryWith)
+    }
+
+    fun onDismissPendingDownload() {
+        // Cookieは認証情報。使わずに閉じたら消す
+        home.pendingDownload?.cookieFile?.delete()
+        home = home.copy(pendingDownload = null)
     }
 
     // --- 履歴 ---
@@ -283,6 +323,7 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
     private fun startDownload(
         url: String,
         cookieFile: File?,
+        quality: Quality,
         retryWith: (() -> Pair<File?, String>)? = null,
     ) {
         if (home.job != null) {
@@ -316,12 +357,13 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
             finishedAt = null,
             status = HistoryStatus.RUNNING,
             error = null,
+            quality = quality.name,
         )
         commitHistory(historyLog.upsert(entry))
 
         viewModelScope.launch {
             val titleRef = AtomicReference<String?>(null)
-            val result = repository.download(url, cookieFile, id) { percent, line ->
+            val result = repository.download(url, cookieFile, quality, id) { percent, line ->
                 // 進捗はワーカースレッドから来る。スナップショット状態はスレッド安全なのでそのまま更新できる
                 YtdlpOutput.titleFrom(line)?.let { titleRef.set(it) }
                 home = home.copy(job = home.job?.copy(percent = percent, line = line))
@@ -353,7 +395,7 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
                 // ページURLで取れなかった。<video> の直リンクで一度だけやり直す(履歴には両方残る)
                 val (retryCookie, retryUrl) = retryWith()
                 home = home.copy(message = "ページのURLでは取れなかったので、動画ファイルのURLで再試行する")
-                startDownload(retryUrl, retryCookie)
+                startDownload(retryUrl, retryCookie, quality)
             }
         }
     }
@@ -386,7 +428,11 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
         home = home.copy(needStorageAccess = false)
     }
 
-    /** yt-dlpのエラーは複数行で長い。履歴には要点の1行だけ残す(全文は完了時のメッセージで見える)。 */
+    /** yt-dlpのエラーは複数行で長い。履歴には要点だけ残す(全文は完了時のメッセージとLogcatで見える)。 */
     private fun firstLine(text: String): String =
-        text.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }?.take(200) ?: text.take(200)
+        text.trim().replace(Regex("\\s+"), " ").take(200)
+
+    private companion object {
+        const val PREF_QUALITY = "quality"
+    }
 }

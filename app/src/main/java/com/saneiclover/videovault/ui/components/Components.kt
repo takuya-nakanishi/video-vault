@@ -2,7 +2,9 @@
 
 package com.saneiclover.videovault.ui.components
 
+import android.graphics.Bitmap
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,14 +33,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -48,10 +56,48 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.saneiclover.videovault.R
+import com.saneiclover.videovault.data.FaviconStore
 import com.saneiclover.videovault.domain.HistoryEntry
 import com.saneiclover.videovault.domain.HistoryStatus
+import com.saneiclover.videovault.domain.InputClassifier
+import com.saneiclover.videovault.domain.Quality
 import com.saneiclover.videovault.domain.RelativeTime
+import com.saneiclover.videovault.ui.home.PendingDownload
 import kotlin.math.abs
+
+/** ファビコンの取得元。MainActivityが提供する。Preview等で未提供ならモノグラムに退避する */
+val LocalFaviconStore = staticCompositionLocalOf<FaviconStore?> { null }
+
+/**
+ * サイトのアイコン。ファビコンが取れればそれ、取れなければ頭文字のモノグラム
+ * (2026-08-21・人間の依頼で「YouTubeやXのアイコンが出ていない」→ ファビコン表示に)。
+ */
+@Composable
+fun SiteIcon(host: String, label: String, modifier: Modifier = Modifier, size: Dp = 44.dp) {
+    val store = LocalFaviconStore.current
+    val bitmap by produceState<Bitmap?>(initialValue = store?.cached(host), host, store) {
+        if (value == null && store != null && host.isNotBlank()) value = store.load(host)
+    }
+    val bmp = bitmap
+    if (bmp == null) {
+        SiteMonogram(label, modifier, size)
+        return
+    }
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            bitmap = bmp.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(size * 0.7f),
+        )
+    }
+}
 
 /**
  * 画面をまたいで使う部品。サイトを示すモノグラム、履歴の行、操作シート、ダイアログ。
@@ -143,6 +189,9 @@ fun HistoryRow(
 ) {
     val subtitle = buildString {
         append(entry.siteName)
+        entry.quality?.let { q -> Quality.entries.firstOrNull { it.name == q } }
+            ?.takeIf { it != Quality.ORIGINAL }
+            ?.let { append(" · ").append(it.label) }
         append(" · ")
         append(RelativeTime.short(entry.startedAt, now))
         if (entry.status != HistoryStatus.SUCCESS) {
@@ -153,7 +202,7 @@ fun HistoryRow(
     ListItem(
         modifier = modifier.clickable(onClick = onClick),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        leadingContent = { SiteMonogram(entry.siteName) },
+        leadingContent = { SiteIcon(host = entry.host, label = entry.siteName) },
         headlineContent = {
             Text(entry.headline, maxLines = 2, overflow = TextOverflow.Ellipsis)
         },
@@ -188,7 +237,7 @@ fun HistoryActionSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                SiteMonogram(entry.siteName, size = 48.dp)
+                SiteIcon(host = entry.host, label = entry.siteName, size = 48.dp)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         entry.headline,
@@ -238,6 +287,61 @@ private fun SheetAction(
         leadingContent = { Icon(painterResource(icon), contentDescription = null, tint = tint) },
         headlineContent = { Text(label, color = tint) },
     )
+}
+
+/**
+ * 画質を選んでからダウンロードするシート(2026-08-21・人間の依頼)。
+ * 3択を縦に並べ、行のタップで即開始。前回の選択に印を付けて1タップで済むようにする。
+ */
+@Composable
+fun QualitySheet(
+    pending: PendingDownload,
+    current: Quality,
+    onChoose: (Quality) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(modifier = Modifier.padding(bottom = 24.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                SiteIcon(
+                    host = InputClassifier.hostOf(pending.url)?.removePrefix("www.") ?: pending.url,
+                    label = pending.siteName,
+                    size = 48.dp,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("画質を選んでダウンロード", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "${pending.siteName} · ${pending.url.removePrefix("https://").removePrefix("http://")}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Quality.entries.forEach { q ->
+                ListItem(
+                    modifier = Modifier.clickable { onChoose(q) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    leadingContent = { RadioButton(selected = q == current, onClick = { onChoose(q) }) },
+                    headlineContent = { Text(q.label) },
+                    supportingContent = { Text(q.detail) },
+                )
+            }
+            Text(
+                "フレームレートと音声はサイトの元のまま。上限に合う画質が無いサイトでは最高画質になる",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+        }
+    }
 }
 
 /** ブックマークを手で追加するダイアログ。 */

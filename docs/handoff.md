@@ -63,13 +63,21 @@ WebView内で止める実装で、ログイン後もアプリ内に留まりロ�
 デュアルスタック回線での `getaddrinfo` のAAAA詰まり → **`--force-ipv4` を常時付与して対処**
 (CLAUDE.md「yt-dlp運用の要点」4層目)。IPv4のみのエミュレータでは再現しないため、**実機で通るか要確認**。
 
+**Xのパスキー2要素認証は通せない(Androidの制限。ui-ux.md「パスキー」)。**
+ユーザーはXにパスキーのみ設定・パスワード削除済み。回避はX側で「認証アプリ(TOTP)」か「SMS」の
+2要素認証を追加してもらうこと(依頼済み)。アプリは WebAuthn 呼び出しを検知して帯で案内する。
+
 **Xログインの白画面・Googleログインが戻る・パスワード欄が出ない → すべて真因は同じ**:
 WebViewの高さが WRAP_CONTENT で CSS の `vh`/`height:100%` が0に潰れていた(DevToolsで実測)。
 `WebView.layoutParams = MATCH_PARENT` で解消。エミュレータでXログイン画面が全部描画されること、
 `100vh` が 0→747 になることを確認済み。別ウィンドウ対応(`onCreateWindow`)と `adjustResize` も入れてある。
 **実機でGoogleログインが完了するところまでは要確認**(エミュレータにGoogleアカウントが無く最後まで通せない)。
 
-TikTokは判定表にあるので動画URLを貼れば直接走る(実地DLは未検証)。
+**TikTokのPlayストア誘導**: `play.google.com` 等のアプリストアへの遷移と、`intent://` の退避URLが
+ストアの場合も止めるようにした(以前は退避URLを `loadUrl` で開いてしまい遮断をすり抜けていた)。
+エミュレータでは tiktok.com のフィードが開き `<video>` にバッジが出る。実機で再度要確認。
+それでもTikTok側が動画ページへの遷移を毎回アプリへ振るなら、⋮「PC版サイトで表示」を使うか、
+TikTokアプリの共有からURLをこのアプリへ送る運用(判定表にあるので直接DLが走る)。
 
 **内蔵ブラウザの調査は `scripts/webview-inspect.sh`**(Logcat `VideoVaultBrowser` + DevTools)と
 **`scripts/webview-eval.py`**(ページ内でJSを評価)。uiautomatorはWebView内部のテキストを拾えないので、

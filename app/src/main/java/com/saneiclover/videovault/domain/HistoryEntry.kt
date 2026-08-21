@@ -26,6 +26,8 @@ data class HistoryEntry(
     val status: HistoryStatus,
     /** 失敗時のエラー文(1行目相当) */
     val error: String?,
+    /** 選んだ画質([Quality] の name)。古い履歴は null */
+    val quality: String? = null,
 ) {
     /** 一覧の主見出し。タイトルが取れていなければURLのホスト以降を見せる */
     val headline: String

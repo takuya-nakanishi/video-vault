@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Environment
 import android.util.Log
 import com.saneiclover.videovault.domain.DownloadedFile
+import com.saneiclover.videovault.domain.Quality
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -63,6 +64,7 @@ class DownloadRepository(
     suspend fun download(
         url: String,
         cookieFile: File?,
+        quality: Quality,
         processId: String,
         onProgress: (percent: Float?, line: String) -> Unit,
     ): Result<Unit> = withContext(io) {
@@ -72,6 +74,8 @@ class DownloadRepository(
             val request = YoutubeDLRequest(url).apply {
                 addOption("-o", "${outputDir.absolutePath}/%(title)s.%(ext)s")
                 addOption("--no-mtime")
+                // 画質(解像度の上限)。オリジナルは yt-dlp の既定に任せる(Quality.kt)
+                quality.formatSelector?.let { addOption("-f", it) }
                 // IPv4を強制する。デュアルスタック(IPv6あり)の実回線で、CloudFront配信の
                 // 動画ホスト(例: vod.newspicks.com)のセグメント取得が
                 // 「[Errno 7] No address associated with hostname」でDNS解決に失敗し、

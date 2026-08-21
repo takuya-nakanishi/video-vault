@@ -109,6 +109,8 @@ fun BrowserScreen(
     var menuOpen by remember { mutableStateOf(false) }
     /** PC版サイト(デスクトップUA)で表示中か。モバイル版がアプリへ誘導するサイト(TikTok等)の逃げ道 */
     var desktopMode by remember { mutableStateOf(false) }
+    /** サイトがパスキー(WebAuthn)を要求した。アプリ内WebViewでは使えないので理由と代替を出す */
+    var passkeyNotice by remember { mutableStateOf(false) }
 
     fun closePopup() {
         popup?.let { it.webChromeClient = null; it.destroy() }
@@ -153,6 +155,15 @@ fun BrowserScreen(
                 }
             }
 
+            if (passkeyNotice) {
+                NoticeBar(
+                    text = "このアプリ内ブラウザではパスキーが使えない(Androidの制限。サイトが許可したアプリか" +
+                        "ブラウザ権限が要る)。認証アプリ(TOTP)・SMS・パスワードなど別の方法でログインする",
+                    actionLabel = null,
+                    onAction = {},
+                    onDismiss = { passkeyNotice = false },
+                )
+            }
             (blockedScheme ?: loadError)?.let { reason ->
                 NoticeBar(
                     text = if (blockedScheme != null) {
@@ -196,6 +207,7 @@ fun BrowserScreen(
                                     }
                                 },
                                 onCount = { n -> view.post { videoCount = n } },
+                                onPasskey = { view.post { passkeyNotice = true } },
                             ),
                             "VideoVault",
                         )
@@ -300,6 +312,7 @@ fun BrowserScreen(
 private class VideoBridge(
     private val onDownload: (JSONObject) -> Unit,
     private val onCount: (Int) -> Unit,
+    private val onPasskey: () -> Unit,
 ) {
     @JavascriptInterface
     fun onVideoDownload(json: String) {
@@ -309,6 +322,10 @@ private class VideoBridge(
 
     @JavascriptInterface
     fun onVideoCount(n: Int) = onCount(n.coerceAtLeast(0))
+
+    /** ページが `navigator.credentials.get/create`(パスキー)を呼んだ。 */
+    @JavascriptInterface
+    fun onPasskeyAttempt() = onPasskey()
 }
 
 private fun loadAsset(context: Context, name: String): String =
@@ -391,7 +408,9 @@ private fun browsingClient(
             return false
         }
         if (!request.isForMainFrame) return true
-        val fallback = intentFallbackUrl(uri.toString())
+        // intent:// の退避URLがアプリストアなら、それも止める(TikTokは退避先が Play ストア。
+        // loadUrl で開くと shouldOverrideUrlLoading を通らず、ストア遮断をすり抜けていた)
+        val fallback = intentFallbackUrl(uri.toString())?.takeUnless { isAppStoreUrl(Uri.parse(it)) }
         if (fallback != null) {
             Log.i(TAG, "intent scheme -> browser_fallback_url: $fallback")
             view.loadUrl(fallback)
@@ -499,14 +518,14 @@ internal fun siteTopOf(url: String): String {
 
 /** 外部アプリへの誘導を止めた・読み込みに失敗した、をWebViewの上に出す帯。 */
 @Composable
-private fun NoticeBar(text: String, actionLabel: String, onAction: () -> Unit, onDismiss: () -> Unit) {
+private fun NoticeBar(text: String, actionLabel: String?, onAction: () -> Unit, onDismiss: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            TextButton(onClick = onAction) { Text(actionLabel) }
+            Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (actionLabel != null) TextButton(onClick = onAction) { Text(actionLabel) }
             TextButton(onClick = onDismiss) { Text("閉じる") }
         }
     }

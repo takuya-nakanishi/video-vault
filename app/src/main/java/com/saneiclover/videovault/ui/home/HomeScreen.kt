@@ -62,6 +62,7 @@ import com.saneiclover.videovault.domain.DefaultBookmarks
 import com.saneiclover.videovault.domain.HistoryEntry
 import com.saneiclover.videovault.domain.HistoryStatus
 import com.saneiclover.videovault.domain.InputClassifier
+import com.saneiclover.videovault.domain.Quality
 import com.saneiclover.videovault.domain.Suggestion
 import com.saneiclover.videovault.ui.components.BookmarkDialog
 import com.saneiclover.videovault.ui.components.ConfirmDialog
@@ -69,8 +70,9 @@ import com.saneiclover.videovault.ui.components.EmptyState
 import com.saneiclover.videovault.ui.components.HistoryActionSheet
 import com.saneiclover.videovault.ui.components.HistoryRow
 import com.saneiclover.videovault.ui.components.MessageBanner
+import com.saneiclover.videovault.ui.components.QualitySheet
 import com.saneiclover.videovault.ui.components.SectionHeader
-import com.saneiclover.videovault.ui.components.SiteMonogram
+import com.saneiclover.videovault.ui.components.SiteIcon
 import com.saneiclover.videovault.ui.theme.VideoVaultTheme
 import com.saneiclover.videovault.ui.theme.WordmarkStyle
 
@@ -103,6 +105,8 @@ fun HomeScreen(
     onHistoryOpen: (HistoryEntry) -> Unit,
     onHistoryCopy: (HistoryEntry) -> Unit,
     onHistoryDelete: (HistoryEntry) -> Unit,
+    onQualityChosen: (Quality) -> Unit,
+    onDismissPendingDownload: () -> Unit,
     modifier: Modifier = Modifier,
     now: Long = System.currentTimeMillis(),
 ) {
@@ -246,6 +250,14 @@ fun HomeScreen(
             onDismiss = { selectedEntry = null },
         )
     }
+    state.pendingDownload?.let { pending ->
+        QualitySheet(
+            pending = pending,
+            current = state.defaultQuality,
+            onChoose = onQualityChosen,
+            onDismiss = onDismissPendingDownload,
+        )
+    }
 }
 
 /** ワードマークと、履歴・保存済みファイルへの入口。 */
@@ -318,7 +330,11 @@ private fun RunningJobCard(job: DownloadJob, onCancel: () -> Unit) {
     ) {
         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SiteMonogram(job.siteName, size = 40.dp)
+                SiteIcon(
+                    host = InputClassifier.hostOf(job.url)?.removePrefix("www.") ?: job.url,
+                    label = job.siteName,
+                    size = 40.dp,
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Text("ダウンロード中", style = MaterialTheme.typography.titleMedium)
                     Text(
@@ -436,7 +452,7 @@ private fun BookmarkTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SiteMonogram(bookmark.name, size = 40.dp)
+            SiteIcon(host = bookmark.host, label = bookmark.name, size = 40.dp)
             Column(modifier = Modifier.weight(1f)) {
                 Text(bookmark.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
@@ -496,6 +512,7 @@ private fun PreviewHost(state: HomeUiState) = VideoVaultTheme {
             onBookmarkClick = {}, onAddBookmark = { _, _ -> true }, onRemoveBookmark = {},
             onOpenHistory = noop, onOpenFiles = noop,
             onHistoryRetry = {}, onHistoryOpen = {}, onHistoryCopy = {}, onHistoryDelete = {},
+            onQualityChosen = {}, onDismissPendingDownload = noop,
             now = PREVIEW_NOW,
         )
     }

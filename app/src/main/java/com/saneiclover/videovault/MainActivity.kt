@@ -13,8 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import com.saneiclover.videovault.data.FaviconStore
+import com.saneiclover.videovault.ui.components.LocalFaviconStore
 import com.saneiclover.videovault.ui.Screen
 import com.saneiclover.videovault.ui.VideoVaultViewModel
 import com.saneiclover.videovault.ui.browser.BrowserScreen
@@ -34,7 +37,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handleIntent(intent)
 
+        val faviconStore = FaviconStore(applicationContext)
         setContent {
+            CompositionLocalProvider(LocalFaviconStore provides faviconStore) {
             VideoVaultTheme {
                 // 保存先(Download/videos)への書き込み許可が要るとき、システムの
                 // 「すべてのファイルへのアクセス」設定画面へ誘導する。戻ってきたら onResume で再確認される
@@ -69,6 +74,8 @@ class MainActivity : ComponentActivity() {
                             onHistoryOpen = viewModel::onOpenHistoryInBrowser,
                             onHistoryCopy = viewModel::onCopyHistoryUrl,
                             onHistoryDelete = viewModel::onDeleteHistory,
+                            onQualityChosen = viewModel::onQualityChosen,
+                            onDismissPendingDownload = viewModel::onDismissPendingDownload,
                         )
 
                         is Screen.Browser -> BrowserScreen(
@@ -99,6 +106,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
             }
         }
     }

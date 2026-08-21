@@ -67,8 +67,11 @@ best = exact or partial
 print(f'{best[0]} {best[1]}' if best else '')
 "
 }
-tap_text()  { local c; c=$(node_center text "$1");         [[ -n "$c" ]] && adb shell input tap $c; }
-tap_desc()  { local c; c=$(node_center content-desc "$1"); [[ -n "$c" ]] && adb shell input tap $c; }
+# 直後の画面更新(ファビコン読み込み・再構成)で uiautomator dump が空や途中切れになることがあるので、
+# 見つからなければ少し待って引き直す(2026-08-21 ホームの「追加」で実際に起きた)
+tap_node()  { local attr="$1" target="$2" c; for i in 1 2 3 4; do c=$(node_center "$attr" "$target"); [[ -n "$c" ]] && { adb shell input tap $c; return 0; }; sleep 1.5; done; return 1; }
+tap_text()  { tap_node text "$1"; }
+tap_desc()  { tap_node content-desc "$1"; }
 long_press_text() {  # 同じ座標で800msのswipe=長押し
   local c; c=$(node_center text "$1"); [[ -n "$c" ]] && adb shell input swipe $c $c 800
 }
@@ -184,9 +187,13 @@ else
   ng "検索候補をタップできない"
 fi
 
-step "シナリオ9[異常系]: 存在しない動画IDはエラーを表示しクラッシュしない"
+step "シナリオ9[異常系]: 存在しない動画IDはエラーを表示しクラッシュしない(画質シート経由)"
 share_url "https://youtu.be/aaaaaaaaaaa"
 if tap_text "ダウンロード"; then
+  sleep 1
+  has_text "画質を選んでダウンロード" && ok "画質シートが出た" || ng "画質シートが出ない"
+  has_text "オリジナル" && has_text "HD" && has_text "SD" && ok "3つの画質が並ぶ" || ng "画質の選択肢が揃わない"
+  tap_text "オリジナル"
   for i in $(seq 1 24); do sleep 5; has_text "失敗" && break; done
   has_text "失敗" && ok "エラーを表示した" || ng "エラーが表示されない(タイムアウト)"
   adb shell pidof $PKG >/dev/null && ok "プロセス生存(クラッシュなし)" || ng "クラッシュした"
@@ -242,9 +249,11 @@ fi  # ONLY_DOWNLOAD
 if [[ "$SKIP_DOWNLOAD" == "--skip-download" ]]; then
   echo; echo "シナリオ14〜17[実ダウンロード]は --skip-download のため省略"
 else
-  step "シナリオ14[正常系・本命]: 実際にYouTubeからダウンロードできる"
+  step "シナリオ14[正常系・本命]: 実際にYouTubeからダウンロードできる(SDを選ぶ)"
   share_url "$TEST_VIDEO"
   if tap_text "ダウンロード"; then
+    sleep 1
+    tap_text "SD" && ok "画質SDを選んだ" || ng "SDを選べない"
     echo "  (yt-dlp更新とダウンロードで最大5分待つ)"
     got=""
     for i in $(seq 1 60); do
@@ -272,6 +281,7 @@ else
   if after_restart_has "$TEST_VIDEO_TITLE"; then
     ok "履歴にタイトル「$TEST_VIDEO_TITLE」が残った"
     dump | grep -qE 'text="YouTube · [^"]*"' && ok "サイト名 YouTube が見える" || ng "サイト名が出ない"
+    dump | grep -qE 'text="YouTube · SD · [^"]*"' && ok "選んだ画質(SD)が履歴に残る" || ng "画質が履歴に出ない"
   else
     ng "履歴にタイトルが残っていない"
     dump | grep -oE 'text="[^"]*"' | head -20
@@ -322,7 +332,10 @@ else
     pos=$(python3 "$WEB_EVAL" "$SERIAL" youtube.com "(()=>{const vw=innerWidth,vh=innerHeight;const va=(r)=>{const w=Math.min(r.right,vw)-Math.max(r.left,0),h=Math.min(r.bottom,vh)-Math.max(r.top,0);return (w>0&&h>0)?w*h:0};const anchor=(el)=>{let best=el.getBoundingClientRect(),ba=va(best),n=el.parentElement,k=0;while(n&&k<5){const r=n.getBoundingClientRect();if(r.width<=vw*1.05&&r.height<=vh*1.5){const a=va(r);if(a>ba){best=r;ba=a}}n=n.parentElement;k++}return best};const b=[...document.querySelectorAll('.vv-badge')].find(b=>b.style.display==='flex');const v=document.querySelector('video');if(!b||!v)return 'no';const r=anchor(v);const l=parseInt(b.style.left),t=parseInt(b.style.top);const okL=Math.abs((Math.min(r.right,vw)-56)-l)<=3;const okT=Math.abs((Math.min(r.bottom,vh)-56)-t)<=3;return (okL&&okT)?'ok':'off l='+l+' t='+t+' box='+Math.round(r.right)+','+Math.round(r.bottom)})()" 2>/dev/null)
     [[ "$pos" == ok* ]] && ok "バッジは動画プレイヤー枠の右下に付いている" || ng "バッジの位置が枠の右下ではない($pos)"
     if python3 "$WEB_EVAL" "$SERIAL" youtube.com "(()=>{const b=[...document.querySelectorAll('.vv-badge')].find(b=>b.style.display==='flex');if(!b)return 'no';b.click();return 'clicked'})()" 2>/dev/null | grep -q clicked; then
-      sleep 3
+      sleep 2
+      has_text "画質を選んでダウンロード" && ok "バッジからも画質シートが出る" || ng "画質シートが出ない"
+      dump | grep -q 'text="SD"' && ok "前回選んだSDが候補にある" || ng "画質の候補が出ない"
+      tap_text "オリジナル"; sleep 3
       has_text "ダウンロード中" && ok "タップでダウンロードが始まりホームに戻った" || ng "ダウンロードが始まらない"
       got=""
       for i in $(seq 1 36); do

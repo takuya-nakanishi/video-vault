@@ -30,7 +30,8 @@ class HistoryStore(context: Context) {
                     .put("startedAt", e.startedAt)
                     .put("finishedAt", e.finishedAt ?: JSONObject.NULL)
                     .put("status", e.status.name)
-                    .put("error", e.error ?: JSONObject.NULL),
+                    .put("error", e.error ?: JSONObject.NULL)
+                    .put("quality", e.quality ?: JSONObject.NULL),
             )
         }
         JsonFile.write(file, JSONObject().put("version", 1).put("entries", array).toString())
@@ -50,6 +51,7 @@ class HistoryStore(context: Context) {
                 status = runCatching { HistoryStatus.valueOf(o.getString("status")) }
                     .getOrDefault(HistoryStatus.FAILED),
                 error = o.optString("error").takeIf { !o.isNull("error") && it.isNotBlank() },
+                quality = o.optString("quality").takeIf { !o.isNull("quality") && it.isNotBlank() },
             )
         }
         return HistoryLog(entries)

@@ -222,6 +222,22 @@
   setInterval(function () { rescan(); }, 1500);
   setInterval(schedule, 250);
 
+  // パスキー(WebAuthn)の要求を検知してアプリに知らせる。アプリ内WebViewではAndroidの制限で
+  // パスキーが使えない(RPの assetlinks に載るか、ブラウザ特権が要る)ので、サイト側の
+  // 「パスキーが見つからない」エラーの前に、アプリが理由と代替手段を帯で出す
+  try {
+    if (navigator.credentials && !navigator.credentials.__vvWrapped) {
+      var origGet = navigator.credentials.get.bind(navigator.credentials);
+      var origCreate = navigator.credentials.create.bind(navigator.credentials);
+      var notify = function (o) {
+        if (o && o.publicKey && window.VideoVault && VideoVault.onPasskeyAttempt) VideoVault.onPasskeyAttempt();
+      };
+      navigator.credentials.get = function (o) { notify(o); return origGet(o); };
+      navigator.credentials.create = function (o) { notify(o); return origCreate(o); };
+      navigator.credentials.__vvWrapped = true;
+    }
+  } catch (e) { /* 古いWebViewや例外は無視 */ }
+
   window.__vvBadges = {
     rescan: function (forceNotify) { if (forceNotify) lastCount = -1; rescan(); },
     layout: layout,
