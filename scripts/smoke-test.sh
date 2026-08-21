@@ -317,9 +317,10 @@ else
     done
     [[ "$vis" =~ ^[1-9] ]] && ok "動画の上にバッジが出た($vis件)" || ng "バッジが出ない(vis=$vis)"
     has_text "動画 " && ok "下部バーに件数が出た" || ng "下部バーの件数が更新されない"
-    # バッジが動画の枠の右下にあること(枠の右端・下端から44+12px以内)
-    python3 "$WEB_EVAL" "$SERIAL" youtube.com "(()=>{const v=document.querySelector('video');const b=[...document.querySelectorAll('.vv-badge')].find(b=>b.style.display==='flex');if(!v||!b)return 'no';const r=v.getBoundingClientRect();const l=parseInt(b.style.left),t=parseInt(b.style.top);return (Math.abs((r.right-56)-l)<=2 && Math.abs((Math.min(r.bottom,innerHeight)-56)-t)<=2)?'ok':'off:'+l+','+t+' vs '+r.right+','+r.bottom})()" 2>/dev/null | grep -q '^ok' \
-      && ok "バッジは動画枠の右下に付いている" || ng "バッジの位置が枠の右下ではない"
+    # バッジが「見えているプレイヤー枠」の右下にあること。実<video>はレターボックスで枠外へずれるので、
+    # アプリと同じく「viewportに最も大きく映る箱」を基準に、その右下(44+12pxのインセット内)に居るか見る
+    pos=$(python3 "$WEB_EVAL" "$SERIAL" youtube.com "(()=>{const vw=innerWidth,vh=innerHeight;const va=(r)=>{const w=Math.min(r.right,vw)-Math.max(r.left,0),h=Math.min(r.bottom,vh)-Math.max(r.top,0);return (w>0&&h>0)?w*h:0};const anchor=(el)=>{let best=el.getBoundingClientRect(),ba=va(best),n=el.parentElement,k=0;while(n&&k<5){const r=n.getBoundingClientRect();if(r.width<=vw*1.05&&r.height<=vh*1.5){const a=va(r);if(a>ba){best=r;ba=a}}n=n.parentElement;k++}return best};const b=[...document.querySelectorAll('.vv-badge')].find(b=>b.style.display==='flex');const v=document.querySelector('video');if(!b||!v)return 'no';const r=anchor(v);const l=parseInt(b.style.left),t=parseInt(b.style.top);const okL=Math.abs((Math.min(r.right,vw)-56)-l)<=3;const okT=Math.abs((Math.min(r.bottom,vh)-56)-t)<=3;return (okL&&okT)?'ok':'off l='+l+' t='+t+' box='+Math.round(r.right)+','+Math.round(r.bottom)})()" 2>/dev/null)
+    [[ "$pos" == ok* ]] && ok "バッジは動画プレイヤー枠の右下に付いている" || ng "バッジの位置が枠の右下ではない($pos)"
     if python3 "$WEB_EVAL" "$SERIAL" youtube.com "(()=>{const b=[...document.querySelectorAll('.vv-badge')].find(b=>b.style.display==='flex');if(!b)return 'no';b.click();return 'clicked'})()" 2>/dev/null | grep -q clicked; then
       sleep 3
       has_text "ダウンロード中" && ok "タップでダウンロードが始まりホームに戻った" || ng "ダウンロードが始まらない"

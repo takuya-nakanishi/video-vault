@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Message
 import android.util.Log
+import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -106,6 +107,8 @@ fun BrowserScreen(
     /** ページ内で見えている動画の数(JSから通知)。下部バーに出す */
     var videoCount by remember { mutableIntStateOf(0) }
     var menuOpen by remember { mutableStateOf(false) }
+    /** PC版サイト(デスクトップUA)で表示中か。モバイル版がアプリへ誘導するサイト(TikTok等)の逃げ道 */
+    var desktopMode by remember { mutableStateOf(false) }
 
     fun closePopup() {
         popup?.let { it.webChromeClient = null; it.destroy() }
@@ -265,6 +268,18 @@ fun BrowserScreen(
                                     webView?.evaluateJavascript(badgeScript, null)
                                 },
                             )
+                            DropdownMenuItem(
+                                text = { Text(if (desktopMode) "モバイル版サイトで表示" else "PC版サイトで表示") },
+                                leadingIcon = { Icon(painterResource(R.drawable.ic_globe), contentDescription = null) },
+                                onClick = {
+                                    menuOpen = false
+                                    desktopMode = !desktopMode
+                                    webView?.let { v ->
+                                        v.applyDesktopMode(desktopMode)
+                                        v.reload()
+                                    }
+                                },
+                            )
                         }
                     }
                 }
@@ -322,12 +337,34 @@ private fun PopupOverlay(child: WebView, onClose: () -> Unit) {
 /** ブラウズ用の共通設定(メイン・ポップアップ両方に当てる)。 */
 @SuppressLint("SetJavaScriptEnabled")
 private fun WebView.configureForBrowsing() {
+    // WebViewの既定のLayoutParams高さは WRAP_CONTENT。すると CSS の初期包含ブロック(ICB)の
+    // 高さが0になり、`height:100vh` や `height:100%` が全部0に潰れる(幅は効くので vw は正常)。
+    // X のログインは vh でレイアウトするため、モーダルが高さ0になり真っ白のまま固まっていた
+    // (2026-08-21 実機。回転しても直らず、DevToolsで vh=0・html高さ0px を実測して特定)。
+    // 高さを MATCH_PARENT にすると ICB に実寸が入り解消する
+    layoutParams = ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.MATCH_PARENT,
+    )
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
     settings.javaScriptEnabled = true
     settings.domStorageEnabled = true
     // 素のWebViewはUAに「; wv」が入り、GoogleがJS無効扱いの「enablejs」へ飛ばして空白になる(2026-08-19 実機)
     settings.userAgentString = settings.userAgentString.replace("; wv", "")
+    // 端末既定のUAを覚えておき、PC版表示の切り替えで戻せるようにする
+    setTag(R.id.vv_mobile_user_agent, settings.userAgentString)
+}
+
+/** PC版サイト表示の切り替え。UAに加え、広い表示幅で描いて縮小する(PC用レイアウトが収まるように)。 */
+private fun WebView.applyDesktopMode(desktop: Boolean) {
+    val mobileUa = getTag(R.id.vv_mobile_user_agent) as? String ?: settings.userAgentString
+    settings.userAgentString = if (desktop) DESKTOP_USER_AGENT else mobileUa
+    settings.useWideViewPort = desktop
+    settings.loadWithOverviewMode = desktop
+    settings.setSupportZoom(desktop)
+    settings.builtInZoomControls = desktop
+    settings.displayZoomControls = false
 }
 
 /** 遷移・エラーの共通クライアント。外部スキームは開かず帯で知らせる。 */
@@ -343,7 +380,16 @@ private fun browsingClient(
         val uri = request.url
         val scheme = uri.scheme?.lowercase()
         Log.i(TAG, "navigate main=${request.isForMainFrame} redirect=${request.isRedirect} $uri")
-        if (scheme == "http" || scheme == "https") return false
+        if (scheme == "http" || scheme == "https") {
+            // アプリストアへの誘導(TikTok等が「アプリで開け」と飛ばす)はWebView内で止める。
+            // 外へ出てもダウンロードには繋がらず、戻る手段も失う(2026-08-21 Pixel実機・tiktok.com)
+            if (request.isForMainFrame && isAppStoreUrl(uri)) {
+                Log.w(TAG, "blocked app store redirect: $uri")
+                onSchemeBlocked(uri.host ?: "app store")
+                return true
+            }
+            return false
+        }
         if (!request.isForMainFrame) return true
         val fallback = intentFallbackUrl(uri.toString())
         if (fallback != null) {
@@ -425,6 +471,16 @@ private fun mainChromeClient(
         return true
     }
 }
+
+/** Google Play / App Store のページか(サイトがアプリへ誘導する先)。 */
+internal fun isAppStoreUrl(uri: Uri): Boolean {
+    val host = uri.host?.lowercase() ?: return false
+    return host == "play.google.com" || host == "market.android.com" || host == "apps.apple.com" || host == "itunes.apple.com"
+}
+
+/** PC版サイト用のUA。モバイル版がアプリへ誘導してくるサイト(TikTok等)の逃げ道。 */
+internal const val DESKTOP_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
 /** `intent://...#Intent;...;S.browser_fallback_url=...;end` から退避URLを取り出す。無ければ null。 */
 internal fun intentFallbackUrl(url: String): String? {

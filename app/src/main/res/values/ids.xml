@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WebViewのタグ用。PC版表示の切り替えで元(モバイル)のUAへ戻すために覚えておく -->
+    <item name="vv_mobile_user_agent" type="id" />
+</resources>

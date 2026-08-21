@@ -63,12 +63,11 @@ WebView内で止める実装で、ログイン後もアプリ内に留まりロ�
 デュアルスタック回線での `getaddrinfo` のAAAA詰まり → **`--force-ipv4` を常時付与して対処**
 (CLAUDE.md「yt-dlp運用の要点」4層目)。IPv4のみのエミュレータでは再現しないため、**実機で通るか要確認**。
 
-**Xの「Googleでログイン」が真っ白**(1つ目)→ 別ウィンドウ(`window.open`)非対応が原因。
-`setSupportMultipleWindows(true)`+`onCreateWindow` で子WebViewとして開くよう対応
-(エミュレータのDevToolsで `window.open`→オーバーレイ表示を確認済み)。**実機で要確認**。
-**Xのユーザー名→パスWord欄が出ず固まる**(2つ目)→ SPAモーダルの再描画詰まり。
-`adjustResize` を付けたが、これで完全に直る確証はない。**Googleでログインを主導線に**(上で通る)。
-X公開動画のDLはログイン不要。
+**Xログインの白画面・Googleログインが戻る・パスワード欄が出ない → すべて真因は同じ**:
+WebViewの高さが WRAP_CONTENT で CSS の `vh`/`height:100%` が0に潰れていた(DevToolsで実測)。
+`WebView.layoutParams = MATCH_PARENT` で解消。エミュレータでXログイン画面が全部描画されること、
+`100vh` が 0→747 になることを確認済み。別ウィンドウ対応(`onCreateWindow`)と `adjustResize` も入れてある。
+**実機でGoogleログインが完了するところまでは要確認**(エミュレータにGoogleアカウントが無く最後まで通せない)。
 
 TikTokは判定表にあるので動画URLを貼れば直接走る(実地DLは未検証)。
 

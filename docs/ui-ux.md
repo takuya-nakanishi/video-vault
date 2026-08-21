@@ -134,6 +134,16 @@ YouTubeアプリやXアプリの共有メニューからも投げ込めるよう
 タップは `@JavascriptInterface`(`VideoVault.onVideoDownload`)でアプリへ。**クロスオリジンiframeの中は見えない**
 (YouTube埋め込み等はiframe自体の枠に出す)。検出件数は下部バーに「動画 N件」で示す。
 
+実装で踏んだ点(すべて2026-08-21・実機/エミュレータ):
+- **`innerHTML` を使わない**。YouTube等はTrusted Types(CSP)で `innerHTML` を禁じており、使うと
+  「This document requires 'TrustedHTML'」で注入が止まる。SVGは `createElementNS` で組む
+- **`touchend` で発火する**。実タッチは touchend→click の順で来るが、動画プレイヤーへタッチを渡さないため
+  `touchstart`/`touchend` で `stopPropagation`+`preventDefault` すると click が消える。touchendで発火し、
+  直後のclickは 800ms のデバウンスで二重発火を防ぐ(NewsPicksで「バッジは出るが反応しない」の真因)
+- **バッジは実 `<video>` ではなく「見えているプレイヤー枠」に付ける**。YouTubeは実 `<video>` が
+  レターボックスで `top<0` にずれ、見える枠は `#movie_player` 側。要素とその先祖のうち viewport に
+  最も大きく映る箱(ページ丈の大枠は除く)を選んで、その右下に置く
+
 **動画の通信を横取りして解析する方式は採らない。** サイト側の実装が変わるたびに壊れるため。
 Cookieを渡す方式なら、サイト対応の追随は yt-dlp 本体に任せられ、こちらのコードはCookieを渡すだけで済む。
 
@@ -195,11 +205,14 @@ Cookieを渡す方式なら、サイト対応の追随は yt-dlp 本体に任せ
   `setSupportMultipleWindows(true)` + `onCreateWindow` で子WebViewとして開き、Cookieはプロセス共有なので
   受け渡しが成立する。子は「ログイン」オーバーレイで重ね、閉じるボタンと `window.close()` の両方で畳む。
   NewsPicksは全画面リダイレクト方式なので元々出なかった(方式の違いで再現条件が分かれる)。
-- **SPAのログインモーダルはソフトキーボードで崩れうる。** X で username→次へ の後、パスワード欄が
-  DOMに載る(`hasPwd:true`)のに画面が古いまま固まる事象(2026-08-21 実機。2つ目の薄ぼやけ画面)。
-  `MainActivity` に `android:windowSoftInputMode="adjustResize"` を付け、キーボード表示時に
-  ビューポートを実際に縮めて再レイアウト/再描画が走るようにした。**Googleでログインが最も確実な導線**
-  (上の別ウィンドウ対応で通る)。X公開動画のDLはそもそもログイン不要
+- **WebViewの高さは MATCH_PARENT にする(最重要)。** WebViewの既定LayoutParams高さは WRAP_CONTENT で、
+  すると CSS の初期包含ブロック(ICB)高さが**0**になり、`height:100vh` / `height:100%` が全部0に潰れる
+  (幅は効くので `vw` は正常)。Xのログインは `vh` でレイアウトするため、モーダルが高さ0で真っ白のまま固まり、
+  Googleログインもポップアップは出るがメイン画面が潰れていて「ログインされない」ように見えた
+  (2026-08-21 実機。両方これが真因)。DevToolsで `100vh`→0px・`document.documentElement` の高さ0px を実測して特定。
+  `WebView.layoutParams = MATCH_PARENT×MATCH_PARENT` で解消(`vh` が 0→747 になり、ログイン画面が全部描画される)。
+  回転や `adjustResize` では直らない(ICBの高さそのものが0だったため)。**これはXに限らずvhで組む全サイトに効く**
+- `adjustResize` も併せて付与(キーボード表示時のフォーム位置ずれ対策。上の根治とは別件の保険)
 - **サイトのネイティブアプリ誘導はWebView内で止める。** NewsPicksのGoogleログイン後、
   コールバック画面が真っ白で止まった(2026-08-21 Pixel実機)。端末にNewsPicksアプリが入っており、
   ログイン後に `newspicks://` / `intent://` でアプリへ飛ばそうとする遷移をWebViewが開けないのが

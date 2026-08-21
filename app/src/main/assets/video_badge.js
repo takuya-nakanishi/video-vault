@@ -100,8 +100,16 @@
     b.setAttribute('role', 'button');
     b.setAttribute('aria-label', 'この動画をダウンロード');
     b.appendChild(makeIcon());
+    // 実タッチでは touchend → click の順で来るが、touchend で preventDefault すると click が
+    // 来なくなる(2026-08-21 Pixel実機で「バッジが反応しない」として発覚。エミュレータのCDPの
+    // click() では再現しない)。そこで touchend の時点で発火し、直後の click は二重発火を避けて無視する。
+    // タッチをページ側(動画プレイヤー)に渡さないよう、touchstart から止める
+    var firedAt = 0;
     var fire = function (e) {
       e.preventDefault(); e.stopPropagation();
+      var now = Date.now();
+      if (now - firedAt < 800) return;
+      firedAt = now;
       b.classList.add('vv-sent');
       setTimeout(function () { b.classList.remove('vv-sent'); }, 2500);
       var payload = JSON.stringify({
@@ -112,8 +120,9 @@
       });
       if (window.VideoVault && VideoVault.onVideoDownload) VideoVault.onVideoDownload(payload);
     };
+    b.addEventListener('touchstart', function (e) { e.stopPropagation(); }, true);
+    b.addEventListener('touchend', fire, true);
     b.addEventListener('click', fire, true);
-    b.addEventListener('touchend', function (e) { e.preventDefault(); e.stopPropagation(); }, true);
     return b;
   }
 
@@ -136,10 +145,35 @@
     layout();
   }
 
+  // 要素と viewport の重なり面積。バッジを「見えている動画の枠」に合わせる基準
+  function visibleArea(r, vw, vh) {
+    var w = Math.min(r.right, vw) - Math.max(r.left, 0);
+    var h = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+    return (w > 0 && h > 0) ? w * h : 0;
+  }
+
+  // バッジを付ける枠。<video> 自体はレターボックスの都合で画面外へずれることがある
+  // (YouTubeは実 <video> が top<0 で、見えるプレイヤーは #movie_player 側。2026-08-21実測)。
+  // 要素とその先祖(数段)のうち、viewport に一番大きく映っている箱を選ぶ。
+  // ページ丈の大枠(body等)は除く
+  function anchorRect(el, vw, vh) {
+    var best = el.getBoundingClientRect(), bestArea = visibleArea(best, vw, vh);
+    var node = el.parentElement, hops = 0;
+    while (node && hops < 5) {
+      var r = node.getBoundingClientRect();
+      if (r.width <= vw * 1.05 && r.height <= vh * 1.5) {
+        var a = visibleArea(r, vw, vh);
+        if (a > bestArea) { best = r; bestArea = a; }
+      }
+      node = node.parentElement; hops++;
+    }
+    return best;
+  }
+
   function layout() {
     var vw = window.innerWidth, vh = window.innerHeight, visible = 0;
     for (var i = 0; i < tracked.length; i++) {
-      var t = tracked[i], r = t.el.getBoundingClientRect();
+      var t = tracked[i], r = anchorRect(t.el, vw, vh);
       var ok = r.width >= MIN_W && r.height >= MIN_H && r.bottom > SIZE && r.top < vh && r.right > SIZE && r.left < vw;
       if (ok) {
         var cs = getComputedStyle(t.el);
@@ -147,9 +181,14 @@
       }
       if (ok) {
         visible++;
+        var left = Math.min(r.right, vw) - SIZE - INSET;
+        var top = Math.min(r.bottom, vh) - SIZE - INSET;
+        // viewport と、見えている枠の内側に収める(枠から飛び出さない・画面外へ出ない)
+        top = Math.max(Math.max(r.top, 0) + INSET, Math.min(top, vh - SIZE - INSET));
+        left = Math.max(0, Math.min(left, vw - SIZE));
         t.badge.style.display = 'flex';
-        t.badge.style.left = Math.round(Math.min(r.right, vw) - SIZE - INSET) + 'px';
-        t.badge.style.top = Math.round(Math.min(r.bottom, vh) - SIZE - INSET) + 'px';
+        t.badge.style.left = Math.round(left) + 'px';
+        t.badge.style.top = Math.round(top) + 'px';
       } else {
         t.badge.style.display = 'none';
       }
