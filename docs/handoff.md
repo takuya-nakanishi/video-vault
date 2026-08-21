@@ -55,14 +55,36 @@ YouTubeアプリ → 共有 → ゲットVIDEO → 候補が並んだ状態で�
 
 ### 4. NewsPicks・TikTokの実地検証
 
-**NewsPicksはGoogleログイン後のコールバックで白画面になった**(2026-08-21 実機)。
-端末にNewsPicksアプリが入っているため、ログイン後に `newspicks://` / `intent://` でアプリへ
-飛ばす遷移をWebViewが開けない、が最有力の見立て。対処として http(s) 以外のスキームを
-WebView内で止めて帯を出す実装と、遷移ログ(Logcat `VideoVaultBrowser`)・DevTools有効化を入れた。
-**再現してもらったら `scripts/webview-inspect.sh` でログとページの状態を見る**
-(見立てが外れていても、ここに原因が出る)。
+**NewsPicksのGoogleログイン → 白画面は解決済み**(2026-08-21)。http(s)以外のスキームを
+WebView内で止める実装で、ログイン後もアプリ内に留まりログインできることを実機で確認。
 
-ブックマークから飛ぶ導線はできたが、**そのサイトで実際にダウンロードが通るかは未検証**。
+**NewsPicksの動画ダウンロードで `[Errno 7] No address associated with hostname` が出た**(実機)。
+抽出は通るのに動画本体(CloudFront `vod.newspicks.com`)のセグメント取得だけがDNSで落ちる。
+デュアルスタック回線での `getaddrinfo` のAAAA詰まり → **`--force-ipv4` を常時付与して対処**
+(CLAUDE.md「yt-dlp運用の要点」4層目)。IPv4のみのエミュレータでは再現しないため、**実機で通るか要確認**。
+
+**Xの「Googleでログイン」が真っ白**(1つ目)→ 別ウィンドウ(`window.open`)非対応が原因。
+`setSupportMultipleWindows(true)`+`onCreateWindow` で子WebViewとして開くよう対応
+(エミュレータのDevToolsで `window.open`→オーバーレイ表示を確認済み)。**実機で要確認**。
+**Xのユーザー名→パスWord欄が出ず固まる**(2つ目)→ SPAモーダルの再描画詰まり。
+`adjustResize` を付けたが、これで完全に直る確証はない。**Googleでログインを主導線に**(上で通る)。
+X公開動画のDLはログイン不要。
+
+TikTokは判定表にあるので動画URLを貼れば直接走る(実地DLは未検証)。
+
+**内蔵ブラウザの調査は `scripts/webview-inspect.sh`**(Logcat `VideoVaultBrowser` + DevTools)と
+**`scripts/webview-eval.py`**(ページ内でJSを評価)。uiautomatorはWebView内部のテキストを拾えないので、
+中の状態はDevTools(CDP)で見る(debugビルドで有効)。
+
+### 4b. 動画バッジ(2026-08-21・人間の依頼で導入)
+
+ブラウザ内で `<video>`/埋め込みiframeを検出し、その枠の右下に弾む紫のバッジを重ねる
+(`assets/video_badge.js`)。タップ→`VideoVault.onVideoDownload`→yt-dlp。常設フッターは廃止、
+予備は下部バー「⋮」の「このページのURLでダウンロード」。
+エミュレータのYouTube視聴ページで**注入→右下に表示→タップ→`Download/videos` に保存**まで確認済み
+(煙試験シナリオ18)。**実機でNewsPicks・X・TikTokのページにバッジが出るかは未確認**。
+出ないサイトがあれば `scripts/webview-eval.py <serial> <url> "document.querySelectorAll('video,iframe').length"`
+で、動画がDOMに無い(canvas/Shadow DOM/クロスオリジンiframe)のか、注入が失敗しているのかを切り分ける。
 - TikTokは判定表(`site_patterns.json`)に `downloadable: true` で載っているので、動画URLを貼れば直接走る
 - NewsPicksは判定表に無い(yt-dlpに専用extractorが無い)。内蔵ブラウザでログイン→「このページをダウンロード」の
   Cookie導線で試す。通らなければ `downloadable: false` で登録して「対象外」と明示する
@@ -76,7 +98,7 @@ WebView内で止めて帯を出す実装と、遷移ログ(Logcat `VideoVaultBro
 
 - ForegroundServiceへの移行(いまは**画面を閉じると中断**され、1件ずつしか流せない。
   中断された履歴は次回起動時に「中断」と表示される)
-- MediaStore経由で公共 `Download/` へ書き出す(いまはアプリ専用領域で他アプリから見えにくい)
+- ~~公共 `Download/` へ書き出す~~ → 実施済み(`Download/videos/`。`MANAGE_EXTERNAL_STORAGE`)
 - 保存済みファイルの再生・共有、設定画面
 
 ## 作業の始め方

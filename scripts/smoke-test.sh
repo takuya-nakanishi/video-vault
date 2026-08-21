@@ -19,7 +19,8 @@ export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform
 
 PKG=com.saneiclover.videovault.debug
 ACT="$PKG/com.saneiclover.videovault.MainActivity"
-DL_DIR="/sdcard/Android/data/$PKG/files/downloads"
+# 保存先は公共の Download/videos(2026-08-21・人間の指定)。app専用領域ではない
+DL_DIR="/sdcard/Download/videos"
 # 19秒の定番動画(YouTube最古"Me at the zoo")。公開が永続的で短く、煙試験に向く。
 # yt-dlp公式テスト動画 BaW_jenozKc は Video unavailable になるため使わない
 TEST_VIDEO="https://youtu.be/jNQXAC9IVRw"
@@ -79,6 +80,15 @@ share_url() {
 }
 # プロセスを殺して起動し直してから探す(=ファイルに永続化されているかの確認になる)
 after_restart_has() { relaunch; has_text "$1"; }
+# ブラウザ画面が出たか。重いページの読み込み中は uiautomator dump が途中で切れることがあるので
+# (2026-08-21 Google検索結果で実際に起きた)、数回引き直す
+browser_shown() {
+  for i in 1 2 3 4; do
+    dump | grep -q 'content-desc="再読込"' && return 0
+    sleep 2
+  done
+  return 1
+}
 
 step "準備: ビルドとインストール"
 if ! ./gradlew assembleDebug -q; then
@@ -91,6 +101,9 @@ fi
 ok "インストール成功"
 # 履歴・ブックマークを初期状態に戻す(前回の試験結果に左右されないため)
 adb shell pm clear $PKG >/dev/null 2>&1
+# 保存先(公共の Download/videos)へ書くには「すべてのファイルへのアクセス」が要る。
+# pm clear で消えるので毎回付け直す。実機では人が設定画面で許可する導線をアプリが出す
+adb shell appops set $PKG MANAGE_EXTERNAL_STORAGE allow >/dev/null 2>&1
 adb shell rm -rf "$DL_DIR" 2>/dev/null
 
 if [[ -z "$ONLY_DOWNLOAD" ]]; then
@@ -107,8 +120,9 @@ has_text "まだ何も取っていない" && ok "履歴の空状態"    || ng "�
 step "シナリオ2[正常系]: ブックマークを1タップで内蔵ブラウザが開く"
 if tap_text "NewsPicks"; then
   sleep 6
-  has_text "このページをダウンロード" && ok "ブラウザ画面が開いた" || ng "ブラウザ画面が出ない"
-  has_text "newspicks.com"           && ok "飛び先がNewsPicks"    || ng "URLが違う"
+  browser_shown            && ok "ブラウザ画面が開いた" || ng "ブラウザ画面が出ない"
+  has_text "newspicks.com" && ok "飛び先がNewsPicks"    || ng "URLが違う"
+  if has_text "このページをダウンロード"; then ng "廃止したフッターボタンが出ている"; else ok "常設のダウンロードボタンは無い"; fi
 else
   ng "ブックマークをタップできない"
 fi
@@ -157,8 +171,8 @@ has_text "Googleで検索" && ok "検索候補あり" || ng "検索候補が出�
 step "シナリオ8[正常系]: 検索から内蔵ブラウザが開き、栞で今のページをブックマークできる"
 if tap_text "Googleで検索"; then
   sleep 6
-  has_text "このページをダウンロード" && ok "ブラウザ画面が開いた" || ng "ブラウザ画面が出ない"
-  has_text "google.com"              && ok "検索結果を読み込んだ" || ng "URLが表示されない"
+  browser_shown         && ok "ブラウザ画面が開いた" || ng "ブラウザ画面が出ない"
+  has_text "google.com" && ok "検索結果を読み込んだ" || ng "URLが表示されない"
   if tap_desc "ブックマークに追加"; then
     sleep 1
     dump | grep -q 'content-desc="ブックマークから外す"' && ok "栞が登録済みに変わった" || ng "栞が変わらない"
@@ -287,6 +301,41 @@ else
     after_restart_has "まだ何も取っていない" && ok "再起動後も空(永続化)" || ng "再起動で復活した"
   else
     ng "全消去を操作できない"
+  fi
+
+  step "シナリオ18[正常系・本命2]: ブラウザ内の動画バッジからダウンロードできる"
+  # ページ内部はuiautomatorで見えないので、DevTools(webview-eval.py。debugビルド限定)で確かめる
+  WEB_EVAL="scripts/webview-eval.py"
+  share_url "https://m.youtube.com/watch?v=jNQXAC9IVRw"
+  if tap_text "ブラウザで開く"; then
+    vis=0
+    for i in $(seq 1 15); do
+      sleep 3
+      vis=$(python3 "$WEB_EVAL" "$SERIAL" youtube.com \
+        "[...document.querySelectorAll('.vv-badge')].filter(b=>b.style.display==='flex').length" 2>/dev/null || echo 0)
+      [[ "$vis" =~ ^[1-9] ]] && break
+    done
+    [[ "$vis" =~ ^[1-9] ]] && ok "動画の上にバッジが出た($vis件)" || ng "バッジが出ない(vis=$vis)"
+    has_text "動画 " && ok "下部バーに件数が出た" || ng "下部バーの件数が更新されない"
+    # バッジが動画の枠の右下にあること(枠の右端・下端から44+12px以内)
+    python3 "$WEB_EVAL" "$SERIAL" youtube.com "(()=>{const v=document.querySelector('video');const b=[...document.querySelectorAll('.vv-badge')].find(b=>b.style.display==='flex');if(!v||!b)return 'no';const r=v.getBoundingClientRect();const l=parseInt(b.style.left),t=parseInt(b.style.top);return (Math.abs((r.right-56)-l)<=2 && Math.abs((Math.min(r.bottom,innerHeight)-56)-t)<=2)?'ok':'off:'+l+','+t+' vs '+r.right+','+r.bottom})()" 2>/dev/null | grep -q '^ok' \
+      && ok "バッジは動画枠の右下に付いている" || ng "バッジの位置が枠の右下ではない"
+    if python3 "$WEB_EVAL" "$SERIAL" youtube.com "(()=>{const b=[...document.querySelectorAll('.vv-badge')].find(b=>b.style.display==='flex');if(!b)return 'no';b.click();return 'clicked'})()" 2>/dev/null | grep -q clicked; then
+      sleep 3
+      has_text "ダウンロード中" && ok "タップでダウンロードが始まりホームに戻った" || ng "ダウンロードが始まらない"
+      got=""
+      for i in $(seq 1 36); do
+        sleep 5
+        found=$(adb shell "find $DL_DIR -type f -size +100k \\( -name '*.mp4' -o -name '*.webm' -o -name '*.mkv' \\) 2>/dev/null" | tr -d '\r')
+        if [[ -n "$found" ]]; then got="$found"; break; fi
+        has_text "失敗" && break
+      done
+      [[ -n "$got" ]] && ok "バッジ経由で動画本体を取得した" || { ng "バッジ経由で取得できない"; dump | grep -oE 'text="失敗[^"]{0,160}"' | head -2; }
+    else
+      ng "バッジをクリックできない"
+    fi
+  else
+    ng "ブラウザで開けない"
   fi
 fi
 

@@ -1,7 +1,10 @@
 package com.saneiclover.videovault
 
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import com.saneiclover.videovault.ui.Screen
 import com.saneiclover.videovault.ui.VideoVaultViewModel
@@ -32,6 +36,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             VideoVaultTheme {
+                // 保存先(Download/videos)への書き込み許可が要るとき、システムの
+                // 「すべてのファイルへのアクセス」設定画面へ誘導する。戻ってきたら onResume で再確認される
+                LaunchedEffect(viewModel.home.needStorageAccess) {
+                    if (viewModel.home.needStorageAccess) {
+                        openAllFilesAccessSettings()
+                        viewModel.onStorageAccessRequested()
+                    }
+                }
                 Surface(
                     // targetSdk 35はedge-to-edgeが強制される。付けないとステータスバーと
                     // ナビゲーションバーの下に中身が潜り込む(エミュレータで実際に潜った)
@@ -65,6 +77,7 @@ class MainActivity : ComponentActivity() {
                             onToggleBookmark = viewModel::onToggleBookmark,
                             onBack = viewModel::onBackToHome,
                             onDownloadRequest = viewModel::onBrowserDownloadRequest,
+                            onVideoDownload = viewModel::onBrowserVideoDownload,
                         )
 
                         Screen.History -> HistoryScreen(
@@ -107,5 +120,20 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         if (intent?.action != Intent.ACTION_SEND) return
         viewModel.onSharedText(intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty())
+    }
+
+    /** 「すべてのファイルへのアクセス」の設定画面を、可能ならこのアプリを選択した状態で開く。 */
+    private fun openAllFilesAccessSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val intent = runCatching {
+            Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:$packageName"),
+            )
+        }.getOrNull()
+        runCatching { startActivity(intent) }.onFailure {
+            // 端末によっては上のアクションが無い。アプリ指定なしの一覧へ落とす
+            runCatching { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+        }
     }
 }

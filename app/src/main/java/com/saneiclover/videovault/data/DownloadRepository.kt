@@ -1,6 +1,9 @@
 package com.saneiclover.videovault.data
 
 import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.util.Log
 import com.saneiclover.videovault.domain.DownloadedFile
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -13,8 +16,11 @@ import java.io.File
 /**
  * yt-dlp(youtubedl-android)の呼び出し口。UI層はここより下を知らない。
  *
- * 保存先はアプリ専用外部ストレージ `files/downloads/`。公共の `Download/` へ出す対応は次版
- * (CLAUDE.md「既知の制約」1)。
+ * 保存先は公共の **`Download/videos/`**(2026-08-21・人間の指定)。他のアプリ(ギャラリー・
+ * ファイル・PCへのMTP転送)から見える。この領域へ書くには「すべてのファイルへのアクセス」
+ * (`MANAGE_EXTERNAL_STORAGE`)が要る。yt-dlpは実ファイルパスへ書くため、MediaStoreの
+ * content URIではなくこの権限で直接パスに書く([hasStorageAccess] で事前に確認する)。
+ * サイドロード専用アプリなのでこの権限を使ってよい(モノレポCLAUDE.md「二層構造」)。
  */
 class DownloadRepository(
     private val context: Context,
@@ -29,8 +35,26 @@ class DownloadRepository(
     @Volatile
     private var ytdlpUpdated = false
 
+    /**
+     * 公共の `Download/videos`。存在しなければ作る(権限が無いと作れないので事前に [hasStorageAccess])。
+     *
+     * `getExternalStoragePublicDirectory` は非推奨だが、公式の代替(MediaStore)は
+     * **content URIしか返さず実ファイルパスを与えない**。yt-dlpは `-o <パス>` に実パスを要求するため
+     * ここでは非推奨APIを使い続ける(全リポジトリ共通ルール「代替が機能不足なら理由を記録して継続」)。
+     */
+    @Suppress("DEPRECATION")
     val outputDir: File
-        get() = File(context.getExternalFilesDir(null), "downloads").apply { mkdirs() }
+        get() = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "videos",
+        ).apply { mkdirs() }
+
+    /**
+     * 公共領域へ書ける状態か。minSdkは26なので、30以上では「すべてのファイルへのアクセス」を要求する
+     * (30未満は常にtrueで、旧APIのWRITE_EXTERNAL_STORAGE前提の従来動作にしておく)。
+     */
+    fun hasStorageAccess(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
 
     /**
      * @param cookieFile ログインが必要なサイト向け。使用後は呼び出し側で消さず、ここで必ず消す
@@ -48,6 +72,14 @@ class DownloadRepository(
             val request = YoutubeDLRequest(url).apply {
                 addOption("-o", "${outputDir.absolutePath}/%(title)s.%(ext)s")
                 addOption("--no-mtime")
+                // IPv4を強制する。デュアルスタック(IPv6あり)の実回線で、CloudFront配信の
+                // 動画ホスト(例: vod.newspicks.com)のセグメント取得が
+                // 「[Errno 7] No address associated with hostname」でDNS解決に失敗し、
+                // 10回リトライして落ちた(2026-08-21 Pixel実機/自宅Wi-Fi)。同梱pythonの
+                // getaddrinfoがAAAA解決で詰まるのがyoutubedl-androidの定番の落とし穴。
+                // IPv4に固定するとAレコードだけを引くので回避できる(IPv4のみのエミュレータでは元々発生せず、
+                // 固定しても実ダウンロードは通ることを煙試験で確認済み)。
+                addOption("--force-ipv4")
                 // yt-dlpはYouTubeの署名解読に外部JavaScriptランタイムを要求するようになり、
                 // 無いと403 Forbiddenで落ちる(2026-08-19実測)。ライブラリ0.18.1が同梱する
                 // QuickJSを使うが、`--js-runtimes quickjs:<パス>` はライブラリが内部で付与するため
@@ -58,6 +90,9 @@ class DownloadRepository(
                 onProgress(percent.takeIf { it >= 0f }?.div(100f), line)
             }
             Unit
+        }.onFailure {
+            // 実機でしか出ない失敗を後から追えるよう全文をLogcatに残す(履歴には1行しか持たない)
+            Log.w(TAG, "download failed: $url", it)
         }.also {
             // Cookieは認証情報。成否にかかわらず残さない
             cookieFile?.delete()
@@ -118,5 +153,9 @@ class DownloadRepository(
             FFmpeg.getInstance().init(context.applicationContext)
             initialized = true
         }
+    }
+
+    private companion object {
+        const val TAG = "VideoVaultDownload"
     }
 }

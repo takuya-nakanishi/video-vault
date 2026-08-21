@@ -90,13 +90,23 @@ YouTubeダウンロードは**3つの原因が層をなして壊れる**。全�
 **将来また403やダウンロード失敗が出たら、まずこの3層を上から確認する。**
 エラー文言に `JavaScript runtime` が含まれるかどうかが、2と3の切り分けになる。
 
+### 4層目: デュアルスタック回線でのDNS解決失敗(2026-08-21確立)
+
+実回線(IPv6あり)で `[Errno 7] No address associated with hostname. Giving up after 10 retries` が出て
+落ちることがある。抽出は通るのに**動画本体(CloudFront等)のセグメント取得だけ**が落ちるのが特徴
+(NewsPicksのHLSで実際に踏んだ)。同梱pythonの `getaddrinfo` がAAAA解決で詰まる、youtubedl-androidの
+定番の落とし穴。→ **`--force-ipv4` を常時付与**(`DownloadRepository`)。IPv4のみのエミュレータでは
+元々起きないため、この失敗の再現は実機でしかできない。エラー文に `No address associated with hostname` が
+あればこれ。全文は Logcat `VideoVaultDownload` に出す。
+
 ## 動作確認(2026-08-19確立)
 
 **実機へ配る前に、必ずエミュレータで煙試験を通す。** 人の目視に頼らず、
 uiautomatorのビューツリー(テキスト)で判定するので、エージェントが単独で回せる。
 
 ```bash
-scripts/smoke-test.sh                  # 全17シナリオ(正常系・異常系・ブックマーク・履歴・永続化・実ダウンロード)
+scripts/smoke-test.sh                  # 全18シナリオ(正常系・異常系・ブックマーク・履歴・永続化・実ダウンロード・動画バッジ)
+scripts/webview-eval.py <serial> <url> <js>  # 内蔵ブラウザの中でJSを評価(debug限定。uiautomatorはWebView内を見られない)
 scripts/smoke-test.sh --only-download  # 実ダウンロードとその履歴だけ(原因追跡の反復用)
 scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ
 scripts/screenshots.sh                 # 全画面のスクリーンショット(人に見せる用。判定はしない)
@@ -113,10 +123,12 @@ scripts/deploy-device.sh               # ビルド→実機インストール→
 
 ## MVPスコープ(v0.1)
 
-- URL入力(またはYouTube/Xアプリの共有シートから受取)→ yt-dlpでダウンロード → アプリ専用外部ストレージ `files/downloads/` へ保存
+- URL入力(またはYouTube/Xアプリの共有シートから受取)→ yt-dlpでダウンロード → 公共の `Download/videos/` へ保存(2026-08-21・人間の指定。`MANAGE_EXTERNAL_STORAGE` が要る。yt-dlpは実パスへ書くためMediaStore不可)
 - 対象はYouTube・X(認証不要でyt-dlpが通る範囲)
 - ログインが要るサイトは**内蔵ブラウザでログイン → Cookieを yt-dlp へ渡す**導線(`docs/ui-ux.md` 導線2)。
   動画の通信を横取りして解析する方式は採らない
+- 内蔵ブラウザでは**ページ内の動画の枠の右下に弾むダウンロードバッジ**を出す(`assets/video_badge.js` を注入。
+  2026-08-21)。常設のフッターボタンは無い。**JSは `innerHTML` を使わない**(YouTube等のTrusted Typesで止まる)
 - 実装済みの範囲と仕様からの逸脱は `docs/ui-ux.md`「実装状況」が正
 
 ## 配布方法(2026-08-14明確化)
@@ -138,7 +150,7 @@ Googleは「開発者が誰かを確認するだけで、アプリの内容は�
 1. **日本語IMEの挙動が未検証**(エミュレータの英語キーボードでは確かめられない)。
    実機を繋いだら最初に「かれの」を入力し、未確定文字列が勝手に確定しないことを見る。
    ここが破綻するならUIの技術選定そのものを見直す(`docs/ui-ux.md`)
-2. 保存先がアプリ専用領域(`Android/data/`配下)のため他アプリから見えにくい → MediaStore経由で公共`Download/`へ書き出す対応を次版で(サイドロードなので`MANAGE_EXTERNAL_STORAGE`権限も選択肢)
+2. ~~保存先がアプリ専用領域~~ → **公共の `Download/videos/` へ書き出す対応を実施済み**(2026-08-21)。`MANAGE_EXTERNAL_STORAGE`(すべてのファイルへのアクセス)で直接パスに書く。未許可なら設定画面へ誘導する
 3. ダウンロード中に画面を閉じると中断される → ForegroundServiceへの移行を次版で。今は1件ずつしか流せない
 4. 設定画面が無い。再生・共有は未実装(再試行は履歴から、yt-dlp本体の更新は実装済み)
 5. GFS(有料会員サイト)は技術調査未了(DRM有無・Cookie認証でのyt-dlp可否)。調査はPC側yt-dlpで先に実施し、通る場合のみ判定表へ追加

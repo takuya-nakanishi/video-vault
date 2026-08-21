@@ -223,6 +223,26 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
         startDownload(pageUrl, cookieFile)
     }
 
+    /**
+     * ページ内の動画バッジのタップ。[targetUrl] は動画そのもののURLの推定(ツイートのパーマリンク・
+     * `watch?v=` 等)。yt-dlp はページURLのextractorで取るのが本筋なのでまずそれで走らせ、
+     * 失敗したら `<video>` の src([mediaSrc]。直リンクのmp4/m3u8)で一度だけやり直す。
+     */
+    fun onBrowserVideoDownload(pageUrl: String, targetUrl: String, mediaSrc: String, cookieHeader: String?) {
+        val cacheDir = getApplication<Application>().cacheDir
+        val target = targetUrl.ifBlank { pageUrl }
+        val fallback = mediaSrc.takeIf { it.startsWith("http", ignoreCase = true) && it != target }
+        val cookieFile = CookieJar.write(cacheDir, target, cookieHeader)
+        screen = Screen.Home
+        startDownload(
+            url = target,
+            cookieFile = cookieFile,
+            retryWith = fallback?.let { media ->
+                { CookieJar.write(cacheDir, media, cookieHeader) to media }
+            },
+        )
+    }
+
     // --- 履歴 ---
 
     /** 同じURLをもう一度。入力欄に戻して候補を出す(そのまま第一候補で再実行できる)。 */
@@ -256,9 +276,27 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
 
     // --- ダウンロード ---
 
-    private fun startDownload(url: String, cookieFile: File?) {
+    /**
+     * @param retryWith 失敗したときに一度だけやり直す先(Cookieファイルと URL を作る関数)。
+     *   動画バッジ経由で、ページURLのextractorが無いサイトを `<video>` の直リンクで救うため
+     */
+    private fun startDownload(
+        url: String,
+        cookieFile: File?,
+        retryWith: (() -> Pair<File?, String>)? = null,
+    ) {
         if (home.job != null) {
             home = home.copy(message = "ダウンロードは1件ずつ実行する(実行中のものを待つか中断する)。")
+            return
+        }
+        if (!repository.hasStorageAccess()) {
+            // 公共の Download/videos へ書くには「すべてのファイルへのアクセス」が要る。
+            // 未許可のまま始めると保存に失敗するので、先に設定画面へ誘導する(MainActivityが拾う)。
+            cookieFile?.delete()
+            home = home.copy(
+                message = "保存先(Download/videos)へ書き込むには「すべてのファイルへのアクセス」を許可する。",
+                needStorageAccess = true,
+            )
             return
         }
         val id = UUID.randomUUID().toString()
@@ -311,6 +349,12 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
                 ),
             )
             refreshDownloads()
+            if (result.isFailure && !cancelRequested && retryWith != null) {
+                // ページURLで取れなかった。<video> の直リンクで一度だけやり直す(履歴には両方残る)
+                val (retryCookie, retryUrl) = retryWith()
+                home = home.copy(message = "ページのURLでは取れなかったので、動画ファイルのURLで再試行する")
+                startDownload(retryUrl, retryCookie)
+            }
         }
     }
 
@@ -335,6 +379,11 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onDismissMessage() {
         home = home.copy(message = null)
+    }
+
+    /** MainActivityが設定画面へ誘導したら呼ぶ(二重に開かないようフラグを下ろす)。 */
+    fun onStorageAccessRequested() {
+        home = home.copy(needStorageAccess = false)
     }
 
     /** yt-dlpのエラーは複数行で長い。履歴には要点の1行だけ残す(全文は完了時のメッセージで見える)。 */

@@ -29,4 +29,6 @@ data class HomeUiState(
     val downloads: List<DownloadedFile> = emptyList(),
     val job: DownloadJob? = null,
     val message: String? = null,
+    /** 保存先(公共の Download/videos)への書き込み許可を求める必要があるとき true。MainActivityが設定画面へ誘導する */
+    val needStorageAccess: Boolean = false,
 )
