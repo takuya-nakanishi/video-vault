@@ -144,13 +144,31 @@ else
   ng "「追加」をタップできない"
 fi
 
-step "シナリオ4[正常系]: ブックマークを長押しで削除し、再起動後も消えたまま"
+step "シナリオ4[正常系]: ブックマークを長押し→編集で名前を変え、再起動後も残る"
 if long_press_text "Vimeo"; then
   sleep 1
-  has_text "ブックマークを削除" && ok "確認ダイアログが出た" || ng "確認ダイアログが出ない"
+  has_text "編集" && has_text "削除" && has_text "閉じる" && ok "操作シート(編集/削除/閉じる)が出た" || ng "操作シートが出ない"
+  if tap_text "編集"; then
+    sleep 1
+    has_text "ブックマークを編集" && ok "編集ダイアログが出た" || ng "編集ダイアログが出ない"
+    # 名前欄は登録内容入り。末尾に追記して「Vimeo2」にする
+    tap_text "名前"; sleep 0.5; adb shell input keyevent KEYCODE_MOVE_END; adb shell input text "2"
+    tap_text "保存"; sleep 1
+    has_text "Vimeo2" && ok "名前が変わった" || ng "名前が変わらない"
+    after_restart_has "Vimeo2" && ok "再起動後も変更が残る(永続化)" || ng "再起動で戻った"
+  else
+    ng "「編集」をタップできない"
+  fi
+else
+  ng "長押しできない"
+fi
+
+step "シナリオ4b[正常系]: ブックマークを長押し→削除し、再起動後も消えたまま"
+if long_press_text "Vimeo2"; then
+  sleep 1
   tap_text "削除"; sleep 1
-  if has_text "Vimeo"; then ng "削除されていない"; else ok "一覧から消えた"; fi
-  if after_restart_has "Vimeo"; then ng "再起動で復活した"; else ok "再起動後も消えたまま(永続化)"; fi
+  if has_text "Vimeo2"; then ng "削除されていない"; else ok "一覧から消えた"; fi
+  if after_restart_has "Vimeo2"; then ng "再起動で復活した"; else ok "再起動後も消えたまま(永続化)"; fi
 else
   ng "長押しできない"
 fi

@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
                             onDismissMessage = viewModel::onDismissMessage,
                             onBookmarkClick = viewModel::onBookmarkClick,
                             onAddBookmark = viewModel::onAddBookmark,
+                            onUpdateBookmark = viewModel::onUpdateBookmark,
                             onRemoveBookmark = viewModel::onRemoveBookmark,
                             onOpenHistory = viewModel::onOpenHistory,
                             onOpenFiles = viewModel::onOpenFiles,

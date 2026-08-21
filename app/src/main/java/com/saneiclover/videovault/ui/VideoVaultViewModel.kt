@@ -186,6 +186,17 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
         saveBookmarks(home.bookmarks.filterNot { it.id == bookmark.id })
     }
 
+    /** 長押し→「編集」。名前とURLを差し替える。id と追加順はそのまま(並びが変わらない)。 */
+    fun onUpdateBookmark(bookmark: Bookmark, name: String, rawUrl: String): Boolean {
+        val url = InputClassifier.normalizeUrl(rawUrl) ?: run {
+            home = home.copy(message = "URLとして読めない: $rawUrl")
+            return false
+        }
+        val label = name.trim().ifEmpty { InputClassifier.hostOf(url)?.removePrefix("www.") ?: url }
+        saveBookmarks(home.bookmarks.map { if (it.id == bookmark.id) it.copy(name = label, url = url) else it })
+        return true
+    }
+
     fun isBookmarked(url: String): Boolean = home.bookmarks.any { sameUrl(it.url, url) }
 
     /** ブラウザの★。登録済みなら外し、未登録なら今のページを入れる。 */

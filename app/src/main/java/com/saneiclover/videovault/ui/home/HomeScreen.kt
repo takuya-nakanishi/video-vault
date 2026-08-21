@@ -41,6 +41,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,8 +65,8 @@ import com.saneiclover.videovault.domain.HistoryStatus
 import com.saneiclover.videovault.domain.InputClassifier
 import com.saneiclover.videovault.domain.Quality
 import com.saneiclover.videovault.domain.Suggestion
+import com.saneiclover.videovault.ui.components.BookmarkActionSheet
 import com.saneiclover.videovault.ui.components.BookmarkDialog
-import com.saneiclover.videovault.ui.components.ConfirmDialog
 import com.saneiclover.videovault.ui.components.EmptyState
 import com.saneiclover.videovault.ui.components.HistoryActionSheet
 import com.saneiclover.videovault.ui.components.HistoryRow
@@ -98,6 +99,7 @@ fun HomeScreen(
     onDismissMessage: () -> Unit,
     onBookmarkClick: (Bookmark) -> Unit,
     onAddBookmark: (name: String, url: String) -> Boolean,
+    onUpdateBookmark: (bookmark: Bookmark, name: String, url: String) -> Boolean,
     onRemoveBookmark: (Bookmark) -> Unit,
     onOpenHistory: () -> Unit,
     onOpenFiles: () -> Unit,
@@ -111,7 +113,10 @@ fun HomeScreen(
     now: Long = System.currentTimeMillis(),
 ) {
     var addingBookmark by remember { mutableStateOf(false) }
-    var bookmarkToRemove by remember { mutableStateOf<Bookmark?>(null) }
+    /** 長押しで操作シートを出しているブックマーク */
+    var bookmarkMenu by remember { mutableStateOf<Bookmark?>(null) }
+    /** 「編集」で開いているブックマーク */
+    var editingBookmark by remember { mutableStateOf<Bookmark?>(null) }
     var selectedEntry by remember { mutableStateOf<HistoryEntry?>(null) }
     val browsing = state.suggestions.isNotEmpty()
 
@@ -182,7 +187,7 @@ fun HomeScreen(
                         BookmarkTile(
                             bookmark = bookmark,
                             onClick = { onBookmarkClick(bookmark) },
-                            onLongClick = { bookmarkToRemove = bookmark },
+                            onLongClick = { bookmarkMenu = bookmark },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -228,17 +233,25 @@ fun HomeScreen(
             onDismiss = { addingBookmark = false },
         )
     }
-    bookmarkToRemove?.let { bookmark ->
-        ConfirmDialog(
-            title = "ブックマークを削除",
-            text = "「${bookmark.name}」をブックマークから外す。",
-            confirmLabel = "削除",
-            onConfirm = {
-                onRemoveBookmark(bookmark)
-                bookmarkToRemove = null
-            },
-            onDismiss = { bookmarkToRemove = null },
+    bookmarkMenu?.let { bookmark ->
+        BookmarkActionSheet(
+            bookmark = bookmark,
+            onEdit = { bookmarkMenu = null; editingBookmark = bookmark },
+            onDelete = { bookmarkMenu = null; onRemoveBookmark(bookmark) },
+            onDismiss = { bookmarkMenu = null },
         )
+    }
+    editingBookmark?.let { bookmark ->
+        // 追加時と同じ画面に、登録内容を入れて開く(人間の依頼)
+        key(bookmark.id) {
+            BookmarkDialog(
+                title = "ブックマークを編集",
+                initialName = bookmark.name,
+                initialUrl = bookmark.url,
+                onConfirm = { name, url -> if (onUpdateBookmark(bookmark, name, url)) editingBookmark = null },
+                onDismiss = { editingBookmark = null },
+            )
+        }
     }
     selectedEntry?.let { entry ->
         HistoryActionSheet(
@@ -509,7 +522,7 @@ private fun PreviewHost(state: HomeUiState) = VideoVaultTheme {
             state = state,
             onInputChange = {}, onSubmit = noop, onClearInput = noop, onClipboardChipClick = noop,
             onSuggestionClick = {}, onCancelDownload = noop, onDismissMessage = noop,
-            onBookmarkClick = {}, onAddBookmark = { _, _ -> true }, onRemoveBookmark = {},
+            onBookmarkClick = {}, onAddBookmark = { _, _ -> true }, onUpdateBookmark = { _, _, _ -> true }, onRemoveBookmark = {},
             onOpenHistory = noop, onOpenFiles = noop,
             onHistoryRetry = {}, onHistoryOpen = {}, onHistoryCopy = {}, onHistoryDelete = {},
             onQualityChosen = {}, onDismissPendingDownload = noop,

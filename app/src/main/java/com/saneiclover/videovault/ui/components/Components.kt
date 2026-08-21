@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.saneiclover.videovault.R
 import com.saneiclover.videovault.data.FaviconStore
+import com.saneiclover.videovault.domain.Bookmark
 import com.saneiclover.videovault.domain.HistoryEntry
 import com.saneiclover.videovault.domain.HistoryStatus
 import com.saneiclover.videovault.domain.InputClassifier
@@ -344,19 +345,59 @@ fun QualitySheet(
     }
 }
 
-/** ブックマークを手で追加するダイアログ。 */
+/**
+ * ブックマークを長押ししたときの操作(2026-08-21・人間の依頼で「編集 / 削除 / 閉じる」の3つに)。
+ * 履歴の操作シートと同じ形で、やりたいことを縦に並べる。削除はここが確認の代わり(即実行)。
+ */
+@Composable
+fun BookmarkActionSheet(
+    bookmark: Bookmark,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(modifier = Modifier.padding(bottom = 24.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                SiteIcon(host = bookmark.host, label = bookmark.name, size = 48.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(bookmark.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        bookmark.url,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            SheetAction(R.drawable.ic_bookmark, "編集", onEdit)
+            SheetAction(R.drawable.ic_error_circle, "削除", onDelete, destructive = true)
+            SheetAction(R.drawable.ic_clipboard, "閉じる", onDismiss)
+        }
+    }
+}
+
+/** ブックマークを手で追加・編集するダイアログ。編集時は登録内容を入れた状態で開く。 */
 @Composable
 fun BookmarkDialog(
     onConfirm: (name: String, url: String) -> Unit,
     onDismiss: () -> Unit,
     initialName: String = "",
     initialUrl: String = "",
+    title: String = "ブックマークを追加",
 ) {
     var name by rememberSaveable { mutableStateOf(initialName) }
     var url by rememberSaveable { mutableStateOf(initialUrl) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("ブックマークを追加") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
