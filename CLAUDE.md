@@ -105,7 +105,7 @@ YouTubeダウンロードは**3つの原因が層をなして壊れる**。全�
 uiautomatorのビューツリー(テキスト)で判定するので、エージェントが単独で回せる。
 
 ```bash
-scripts/smoke-test.sh                  # 全18シナリオ(正常系・異常系・ブックマーク・履歴・永続化・実ダウンロード・動画バッジ)
+scripts/smoke-test.sh                  # 全19シナリオ・64チェック(正常系・異常系・ブックマーク・履歴・永続化・実ダウンロード・動画バッジ)
 scripts/webview-eval.py <serial> <url> <js>  # 内蔵ブラウザの中でJSを評価(debug限定。uiautomatorはWebView内を見られない)
 scripts/smoke-test.sh --only-download  # 実ダウンロードとその履歴だけ(原因追跡の反復用)
 scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ

@@ -337,14 +337,18 @@ else
   share_url "https://m.youtube.com/watch?v=jNQXAC9IVRw"
   if tap_text "ブラウザで開く"; then
     vis=0
-    for i in $(seq 1 15); do
+    # YouTubeのプレイヤー初期化はエミュレータだと遅い。45秒では足りず偽の不合格になった(2026-08-21)
+    for i in $(seq 1 25); do
       sleep 3
       vis=$(python3 "$WEB_EVAL" "$SERIAL" youtube.com \
         "[...document.querySelectorAll('.vv-badge')].filter(b=>b.style.display==='flex').length" 2>/dev/null || echo 0)
       [[ "$vis" =~ ^[1-9] ]] && break
     done
     [[ "$vis" =~ ^[1-9] ]] && ok "動画の上にバッジが出た($vis件)" || ng "バッジが出ない(vis=$vis)"
-    has_text "動画 " && ok "下部バーに件数が出た" || ng "下部バーの件数が更新されない"
+    # バッジが出てから下部バーへ反映されるまで数秒かかる(実測: バッジ5秒 → 下部バー10秒)。
+    # 検出直後に1回だけ見ると落ちる=テスト側の偽の不合格だった(2026-08-21に実際に踏んだ)
+    bar=""; for i in 1 2 3 4 5; do has_text "動画 " && { bar=1; break; }; sleep 3; done
+    [[ -n "$bar" ]] && ok "下部バーに件数が出た" || ng "下部バーの件数が更新されない"
     # バッジが「見えているプレイヤー枠」の右下にあること。実<video>はレターボックスで枠外へずれるので、
     # アプリと同じく「viewportに最も大きく映る箱」を基準に、その右下(44+12pxのインセット内)に居るか見る
     pos=$(python3 "$WEB_EVAL" "$SERIAL" youtube.com "(()=>{const vw=innerWidth,vh=innerHeight;const va=(r)=>{const w=Math.min(r.right,vw)-Math.max(r.left,0),h=Math.min(r.bottom,vh)-Math.max(r.top,0);return (w>0&&h>0)?w*h:0};const anchor=(el)=>{let best=el.getBoundingClientRect(),ba=va(best),n=el.parentElement,k=0;while(n&&k<5){const r=n.getBoundingClientRect();if(r.width<=vw*1.05&&r.height<=vh*1.5){const a=va(r);if(a>ba){best=r;ba=a}}n=n.parentElement;k++}return best};const b=[...document.querySelectorAll('.vv-badge')].find(b=>b.style.display==='flex');const v=document.querySelector('video');if(!b||!v)return 'no';const r=anchor(v);const l=parseInt(b.style.left),t=parseInt(b.style.top);const okL=Math.abs((Math.min(r.right,vw)-56)-l)<=3;const okT=Math.abs((Math.min(r.bottom,vh)-56)-t)<=3;return (okL&&okT)?'ok':'off l='+l+' t='+t+' box='+Math.round(r.right)+','+Math.round(r.bottom)})()" 2>/dev/null)
