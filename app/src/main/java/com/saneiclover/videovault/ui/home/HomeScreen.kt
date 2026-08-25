@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import com.saneiclover.videovault.R
 import com.saneiclover.videovault.domain.Bookmark
 import com.saneiclover.videovault.domain.DefaultBookmarks
+import com.saneiclover.videovault.domain.DownloadJob
 import com.saneiclover.videovault.domain.HistoryEntry
 import com.saneiclover.videovault.domain.HistoryStatus
 import com.saneiclover.videovault.domain.InputClassifier

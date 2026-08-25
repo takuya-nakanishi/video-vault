@@ -6,6 +6,12 @@
          MediaStoreのcontent URIではなく「すべてのファイルへのアクセス」で直接書く。
          サイドロード専用アプリ(Play非配信)なので使ってよい(モノレポCLAUDE.md「二層構造」) -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- 画面を閉じてもダウンロードを続けるためのForegroundService(DownloadService)。
+         種別は dataSync = ユーザーが明示的に始めたデータ転送 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 13以降は通知にも実行時の許可が要る。拒否されてもダウンロードは走る(通知が出ないだけ) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="@string/app_name"
@@ -29,6 +35,13 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- 進捗通知を出しながらダウンロードを走らせる。アプリを離れても、
+             タスクから消しても継続する(中断は通知のボタンから) -->
+        <service
+            android:name=".data.DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

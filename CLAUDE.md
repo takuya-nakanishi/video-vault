@@ -56,6 +56,7 @@ domain/    Android非依存の純粋なKotlin。単体テストの対象
            YtdlpOutput(yt-dlp出力からタイトル抽出)/ RelativeTime(「3時間前」「昨日」)
 data/      Androidとyt-dlpに触る層
            SiteCatalogLoader(assets/site_patterns.json)/ DownloadRepository / CookieJar
+           DownloadCenter(実行状態と履歴の持ち主)/ DownloadService(ForegroundService)
            BookmarkStore・HistoryStore(files/*.json。JsonFileで原子的に書く)
 ui/        Compose。画面は状態を持たず、状態は VideoVaultViewModel が1つで持つ
            home/HomeScreen(入力欄+ブックマーク+最近の履歴)/ browser/BrowserScreen(WebView+栞)/
@@ -66,11 +67,36 @@ res/       drawable/ic_*.xml は自作の線アイコン(24dp・2dp線)。ic_lau
 
 - **URLパターン表は `app/src/main/assets/site_patterns.json`**。サイトが増えてもコードは触らない
 - 判定・履歴・タイトル抽出・時刻表示のテストは `app/src/test/`。`./gradlew testDebugUnitTest` で実機なしに回る
+- 内蔵ブラウザは**ダウンロードを始めてもホームへ戻らない**(2026-08-25)。画質シート・進捗・結果を
+  ブラウザ画面の上に重ねる。戻すとWebViewが破棄され、見ていた動画の再生が止まってページも読み直しになる
 - **表示名は「ゲットVIDEO」**(`res/values/strings.xml`)。パッケージ名 `com.saneiclover.videovault` は
   物理名で、変えるとデータを引き継げない別アプリになるため変えない
 - 色・アイコン・画面構造の決定は `docs/ui-ux.md`「デザインシステム」が正
 - 状態は Flow ではなく Compose のスナップショット状態(`mutableStateOf`)で持つ。
   **入力欄の値を非同期に戻すと日本語IMEの未確定文字列が確定させられる**ため、同期更新にしている
+- **ダウンロードの実行状態と履歴だけはViewModelが持たない**(2026-08-25。次節)
+
+## ダウンロードの実行(2026-08-25確立)
+
+**ダウンロードはViewModelではなくForegroundServiceが走らせる。** ViewModelの `viewModelScope` で
+走らせていた頃は、ホームに戻る・他のアプリを見る・内蔵ブラウザで動画を再生し続ける、のいずれでも
+プロセスが落とされ得て、そのたびにダウンロードが死んだ。
+
+| 部品 | 役割 |
+|---|---|
+| `DownloadCenter`(object) | **実行状態と履歴の唯一の持ち主**。プロセスの寿命で生きる。ViewModelは `Listener` で受け取って映すだけ |
+| `DownloadService` | 実行の器。通知を出し、`DownloadCenter.execute` を回し、終わったら自分を止める |
+| `VideoVaultViewModel` | 画面の状態。破棄されてもダウンロードには影響しない |
+
+- **履歴の所有者をDownloadCenterへ移したのが要点**。アプリを閉じている間に終わった分も履歴に残り、
+  `files/history.json` へ書かれる(ViewModelが生きている必要がない)
+- サービス種別は `dataSync`(Manifest)。起動は前面のActivityからなのでバックグラウンド起動制限に掛からない。
+  `START_NOT_STICKY`(URLを失った再起動には意味がない)。**タスクからスワイプで消されても止めない**
+- 通知は2チャンネル。進行中(`IMPORTANCE_LOW`・中断ボタン付き)と結果(`IMPORTANCE_DEFAULT`)。
+  Android 13以降は `POST_NOTIFICATIONS` の実行時許可が要る。**拒否されてもダウンロードは走る**(通知が出ないだけ)
+- **Cookieは画質シートの間はヘッダ文字列のまま持ち、yt-dlp起動の直前にファイル化する**。
+  Intentに載せるのは識別子だけで、URLもCookieもプロセス内に留める
+- 同時実行は**1件のまま**(2件目は断る)。キューは未実装
 
 ## yt-dlp運用の要点(2026-08-19確立・ここが動かないとアプリが無価値になる)
 
@@ -151,7 +177,8 @@ Googleは「開発者が誰かを確認するだけで、アプリの内容は�
    実機を繋いだら最初に「かれの」を入力し、未確定文字列が勝手に確定しないことを見る。
    ここが破綻するならUIの技術選定そのものを見直す(`docs/ui-ux.md`)
 2. ~~保存先がアプリ専用領域~~ → **公共の `Download/videos/` へ書き出す対応を実施済み**(2026-08-21)。`MANAGE_EXTERNAL_STORAGE`(すべてのファイルへのアクセス)で直接パスに書く。未許可なら設定画面へ誘導する
-3. ダウンロード中に画面を閉じると中断される → ForegroundServiceへの移行を次版で。今は1件ずつしか流せない
+3. ~~ダウンロード中に画面を閉じると中断される~~ → **ForegroundServiceへ移行済み**(2026-08-25。前節)。
+   残る制約は**1件ずつしか流せない**こと(2件目は断る。キューは未実装)
 4. 設定画面が無い。再生・共有は未実装(再試行は履歴から、yt-dlp本体の更新は実装済み)
 5. GFS(有料会員サイト)は技術調査未了(DRM有無・Cookie認証でのyt-dlp可否)。調査はPC側yt-dlpで先に実施し、通る場合のみ判定表へ追加
 6. 文字起こし・分析はアプリに持たせない(PC/クラウド側の後段。llm-wiki側パイプラインと接続)

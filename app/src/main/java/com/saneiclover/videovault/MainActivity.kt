@@ -1,11 +1,14 @@
 package com.saneiclover.videovault
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -20,6 +23,7 @@ import com.saneiclover.videovault.data.FaviconStore
 import com.saneiclover.videovault.ui.components.LocalFaviconStore
 import com.saneiclover.videovault.ui.Screen
 import com.saneiclover.videovault.ui.VideoVaultViewModel
+import com.saneiclover.videovault.ui.browser.BrowserDownloadState
 import com.saneiclover.videovault.ui.browser.BrowserScreen
 import com.saneiclover.videovault.ui.files.FilesScreen
 import com.saneiclover.videovault.ui.history.HistoryScreen
@@ -30,11 +34,16 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: VideoVaultViewModel by viewModels()
 
+    /** 通知の許可。断られてもダウンロードは走る(進捗と完了が通知に出ないだけ) */
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // ステータスバー・ナビゲーションバーのアイコン色をライト/ダークに合わせる
         // (付けないとライトモードで時計やアイコンが白く沈む。エミュレータで実際に沈んだ)
         enableEdgeToEdge()
+        askNotificationPermission()
         handleIntent(intent)
 
         val faviconStore = FaviconStore(applicationContext)
@@ -86,6 +95,18 @@ class MainActivity : ComponentActivity() {
                             onBack = viewModel::onBackToHome,
                             onDownloadRequest = viewModel::onBrowserDownloadRequest,
                             onVideoDownload = viewModel::onBrowserVideoDownload,
+                            // ダウンロードの選択・進捗・結果をこの画面の上に出す。
+                            // ホームへ戻さないので、見ていた動画の再生が止まらない
+                            download = BrowserDownloadState(
+                                pending = viewModel.home.pendingDownload,
+                                defaultQuality = viewModel.home.defaultQuality,
+                                job = viewModel.home.job,
+                                message = viewModel.home.message,
+                            ),
+                            onQualityChosen = viewModel::onQualityChosen,
+                            onDismissPendingDownload = viewModel::onDismissPendingDownload,
+                            onCancelDownload = viewModel::onCancelDownload,
+                            onDismissMessage = viewModel::onDismissMessage,
                         )
 
                         Screen.History -> HistoryScreen(
@@ -123,6 +144,16 @@ class MainActivity : ComponentActivity() {
         // 他アプリでURLをコピーして戻ってくる動線があるので、復帰のたびに見直す
         viewModel.refreshClipboardHint()
         viewModel.refreshDownloads()
+    }
+
+    /**
+     * 通知の許可を1度だけ求める(Android 13以降)。ダウンロードは画面を閉じても
+     * ForegroundServiceで続くため、進捗と結果は通知でしか見えない場面がある。
+     */
+    private fun askNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        if (!granted) requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /** YouTube/Xアプリの共有シートから受け取ったURLを、判定済みの状態で入力欄に載せる。 */

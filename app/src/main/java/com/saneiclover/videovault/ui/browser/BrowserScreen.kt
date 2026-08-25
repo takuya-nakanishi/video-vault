@@ -60,7 +60,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.saneiclover.videovault.R
+import com.saneiclover.videovault.domain.DownloadJob
 import com.saneiclover.videovault.domain.InputClassifier
+import com.saneiclover.videovault.domain.Quality
+import com.saneiclover.videovault.ui.components.MessageBanner
+import com.saneiclover.videovault.ui.components.QualitySheet
+import com.saneiclover.videovault.ui.home.PendingDownload
 import org.json.JSONObject
 
 private const val TAG = "VideoVaultBrowser"
@@ -92,6 +97,12 @@ fun BrowserScreen(
     onDownloadRequest: (pageUrl: String, cookieHeader: String?) -> Unit,
     /** バッジのタップ。targetUrl は動画そのもののURLの推定、mediaSrc は `<video>` の src(予備) */
     onVideoDownload: (pageUrl: String, targetUrl: String, mediaSrc: String, cookieHeader: String?) -> Unit,
+    /** ホームと同じダウンロードの状態。この画面から離れずに選び・見守り・中断できる */
+    download: BrowserDownloadState,
+    onQualityChosen: (Quality) -> Unit,
+    onDismissPendingDownload: () -> Unit,
+    onCancelDownload: () -> Unit,
+    onDismissMessage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -238,6 +249,18 @@ fun BrowserScreen(
                 },
             )
 
+            download.message?.let { message ->
+                Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+                    MessageBanner(
+                        message = message,
+                        onDismiss = onDismissMessage,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
+            download.job?.let { job -> BrowserProgressBar(job = job, onCancel = onCancelDownload) }
+
             Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -300,6 +323,68 @@ fun BrowserScreen(
 
         popup?.let { child ->
             key(child) { PopupOverlay(child = child, onClose = { closePopup() }) }
+        }
+
+        // 画質シート。ホームへ戻さずここで選べるのが、見ながら落とせることの要
+        download.pending?.let { pending ->
+            QualitySheet(
+                pending = pending,
+                current = download.defaultQuality,
+                onChoose = onQualityChosen,
+                onDismiss = onDismissPendingDownload,
+            )
+        }
+    }
+}
+
+/**
+ * ブラウザ画面に重ねるダウンロードの状態。ホームの [com.saneiclover.videovault.ui.home.HomeUiState] の
+ * 同名の値をそのまま映す(持ち主は [com.saneiclover.videovault.data.DownloadCenter])。
+ */
+data class BrowserDownloadState(
+    /** 画質シートで選択待ちのダウンロード */
+    val pending: PendingDownload? = null,
+    val defaultQuality: Quality = Quality.DEFAULT,
+    /** 実行中のダウンロード。ページを見ながら進捗を確認できる */
+    val job: DownloadJob? = null,
+    /** 完了・失敗の1行 */
+    val message: String? = null,
+)
+
+/**
+ * 下部バーの上に出る進捗。動画を見たまま進み具合が見え、そのまま中断もできる。
+ *
+ * **1行に詰めてある**。ここが厚いとWebViewがその分縮み、再生中のプレイヤーが動く。
+ * yt-dlpの出力行はホームの進捗カードで見えるので、ここでは率と中断だけを出す。
+ */
+@Composable
+private fun BrowserProgressBar(job: DownloadJob, onCancel: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = job.percent?.let { "ダウンロード中 ${(it * 100).toInt()}%" } ?: "ダウンロード中",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                TextButton(onClick = onCancel) { Text("中断") }
+            }
+            if (job.percent != null) {
+                LinearProgressIndicator(
+                    progress = { job.percent },
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                )
+            } else {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp))
+            }
         }
     }
 }

@@ -11,30 +11,24 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.saneiclover.videovault.data.BookmarkStore
-import com.saneiclover.videovault.data.CookieJar
-import com.saneiclover.videovault.data.DownloadRepository
-import com.saneiclover.videovault.data.HistoryStore
+import com.saneiclover.videovault.data.DownloadCenter
 import com.saneiclover.videovault.data.SiteCatalogLoader
 import com.saneiclover.videovault.domain.Bookmark
+import com.saneiclover.videovault.domain.DownloadJob
 import com.saneiclover.videovault.domain.DownloadedFile
 import com.saneiclover.videovault.domain.HistoryEntry
 import com.saneiclover.videovault.domain.HistoryLog
-import com.saneiclover.videovault.domain.HistoryStatus
 import com.saneiclover.videovault.domain.InputClassifier
 import com.saneiclover.videovault.domain.Quality
 import com.saneiclover.videovault.domain.Suggestion
-import com.saneiclover.videovault.domain.YtdlpOutput
-import com.saneiclover.videovault.ui.home.DownloadJob
 import com.saneiclover.videovault.ui.home.HomeUiState
 import com.saneiclover.videovault.ui.home.PendingDownload
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 画面状態の保持と、判定・ダウンロード・ブックマーク・履歴の操作。
@@ -42,14 +36,17 @@ import java.util.concurrent.atomic.AtomicReference
  * 状態は `mutableStateOf`(Composeのスナップショット状態)で持つ。Flowを挟まないのは、
  * **入力欄の更新を同期的に行うため**。非同期に値を戻すと日本語IMEの未確定文字列が確定させられる
  * (ui-ux.md「実装で最初に確かめること」)。
+ *
+ * **ダウンロードの実行状態と履歴は持たない**(2026-08-25変更)。それらは
+ * [DownloadCenter] がプロセスの寿命で持ち、ここは [DownloadCenter.Listener] として
+ * 受け取って画面に映すだけ。この ViewModel が破棄されてもダウンロードは走り続ける。
  */
-class VideoVaultViewModel(application: Application) : AndroidViewModel(application) {
+class VideoVaultViewModel(application: Application) : AndroidViewModel(application),
+    DownloadCenter.Listener {
 
-    private val repository = DownloadRepository(application)
     private val catalog = SiteCatalogLoader.load(application)
     private val classifier = InputClassifier(catalog)
     private val bookmarkStore = BookmarkStore(application)
-    private val historyStore = HistoryStore(application)
     /** 画質の既定など、小さな設定。ファイルを増やさず SharedPreferences で足りる */
     private val prefs = application.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
@@ -59,37 +56,49 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
     var screen by mutableStateOf<Screen>(Screen.Home)
         private set
 
-    private var historyLog: HistoryLog
-    private var processId: String? = null
-    private var cancelRequested = false
-
     /**
-     * 永続化は**この1本のスレッド**でしか行わない。保存のたびに独立したIO coroutineを起こすと、
-     * 同じ一時ファイルを取り合って古い状態が最後に残り得る(2026-08-21 Codexレビュー指摘)。
+     * ブックマークの永続化は**この1本のスレッド**でしか行わない。保存のたびに独立したIO coroutineを
+     * 起こすと、同じ一時ファイルを取り合って古い状態が最後に残り得る(2026-08-21 Codexレビュー指摘)。
      * 単一スレッドならFIFOで、最後に書かれるのは必ず最新の状態になる。
+     * (履歴側の同じ仕掛けは [DownloadCenter] が持つ)
      */
-    private val persistExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "videovault-persist") }
+    private val persistExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "videovault-bookmarks") }
     private val persist = persistExecutor.asCoroutineDispatcher()
 
     init {
         // 起動時の読み込みは同期で行う。非同期にすると、共有シート起動→即ダウンロードのように
         // 読み込み完了前に状態が更新されたとき、遅れて届いた読み込み結果がそれを上書きして消す
         // (同上の指摘)。ファイルは数十KB以下のJSONで、読むのに数msしかかからない
-        val now = System.currentTimeMillis()
-        val bookmarks = bookmarkStore.load(now)
-        historyLog = historyStore.load(now)
+        DownloadCenter.init(application)
         home = home.copy(
-            bookmarks = bookmarks,
-            history = historyLog.entries,
+            bookmarks = bookmarkStore.load(System.currentTimeMillis()),
             defaultQuality = Quality.fromName(prefs.getString(PREF_QUALITY, null)),
         )
+        // 履歴と実行中ジョブの現在値はここで届く。画面が作り直されても走行中のダウンロードが見える
+        DownloadCenter.addListener(this)
         refreshDownloads()
     }
 
     override fun onCleared() {
         super.onCleared()
+        DownloadCenter.removeListener(this)
         // 書き込み待ちのタスクは流し切ってから閉じる(shutdownNowにしない)
         persistExecutor.shutdown()
+    }
+
+    // --- DownloadCenter からの通知(実行中ジョブ・履歴・結果) ---
+
+    override fun onJobChanged(job: DownloadJob?) {
+        home = home.copy(job = job)
+    }
+
+    override fun onHistoryChanged(history: HistoryLog) {
+        home = home.copy(history = history.entries)
+    }
+
+    override fun onResult(message: String) {
+        home = home.copy(message = message)
+        refreshDownloads()
     }
 
     // --- 入力欄 ---
@@ -115,7 +124,7 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onSuggestionClick(suggestion: Suggestion) {
         when (suggestion) {
-            is Suggestion.Download -> requestDownload(suggestion.url, cookieFile = null)
+            is Suggestion.Download -> requestDownload(suggestion.url)
             is Suggestion.OpenInBrowser -> screen = Screen.Browser(suggestion.url)
             is Suggestion.WebSearch -> screen = Screen.Browser(InputClassifier.searchUrl(suggestion.query))
             is Suggestion.Unsupported -> home = home.copy(
@@ -234,31 +243,28 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
 
     /**
      * 内蔵ブラウザでログイン済みの状態から取得する導線(ui-ux.md 導線2)。
-     * WebViewが持つCookieをNetscape形式に書き出して yt-dlp へ渡す。
+     * WebViewが持つCookieはヘッダ文字列のまま預け、yt-dlpへ渡す直前にファイル化する。
+     *
+     * **ブラウザ画面のまま留まる**(2026-08-25変更)。以前はここでホームへ戻していたため、
+     * 見ていた動画の再生が止まり、WebViewごと破棄されてページの読み直しになっていた。
+     * 画質シート・進捗・結果はブラウザの上に重ねて出す。
      */
     fun onBrowserDownloadRequest(pageUrl: String, cookieHeader: String?) {
-        val cookieFile = CookieJar.write(getApplication<Application>().cacheDir, pageUrl, cookieHeader)
-        screen = Screen.Home
-        requestDownload(pageUrl, cookieFile)
+        requestDownload(pageUrl, cookieHeader = cookieHeader)
     }
 
     /**
      * ページ内の動画バッジのタップ。[targetUrl] は動画そのもののURLの推定(ツイートのパーマリンク・
      * `watch?v=` 等)。yt-dlp はページURLのextractorで取るのが本筋なのでまずそれで走らせ、
      * 失敗したら `<video>` の src([mediaSrc]。直リンクのmp4/m3u8)で一度だけやり直す。
+     * こちらもブラウザ画面のまま留まる(上と同じ理由)。
      */
     fun onBrowserVideoDownload(pageUrl: String, targetUrl: String, mediaSrc: String, cookieHeader: String?) {
-        val cacheDir = getApplication<Application>().cacheDir
         val target = targetUrl.ifBlank { pageUrl }
-        val fallback = mediaSrc.takeIf { it.startsWith("http", ignoreCase = true) && it != target }
-        val cookieFile = CookieJar.write(cacheDir, target, cookieHeader)
-        screen = Screen.Home
         requestDownload(
             url = target,
-            cookieFile = cookieFile,
-            retryWith = fallback?.let { media ->
-                { CookieJar.write(cacheDir, media, cookieHeader) to media }
-            },
+            cookieHeader = cookieHeader,
+            fallbackUrl = mediaSrc.takeIf { it.startsWith("http", ignoreCase = true) && it != target },
         )
     }
 
@@ -268,15 +274,13 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
      * どの入口から来ても、まず画質シートを出す(2026-08-21・人間の依頼)。
      * 実行中が居るときはシートを出さず断る。
      */
-    private fun requestDownload(url: String, cookieFile: File?, retryWith: (() -> Pair<File?, String>)? = null) {
-        if (home.job != null) {
-            cookieFile?.delete()
+    private fun requestDownload(url: String, cookieHeader: String? = null, fallbackUrl: String? = null) {
+        if (DownloadCenter.isBusy) {
             home = home.copy(message = "ダウンロードは1件ずつ実行する(実行中のものを待つか中断する)。")
             return
         }
-        home.pendingDownload?.cookieFile?.delete()
         home = home.copy(
-            pendingDownload = PendingDownload(url, catalog.nameForUrl(url), cookieFile, retryWith),
+            pendingDownload = PendingDownload(url, catalog.nameForUrl(url), cookieHeader, fallbackUrl),
             message = null,
         )
     }
@@ -285,12 +289,11 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
         val pending = home.pendingDownload ?: return
         prefs.edit().putString(PREF_QUALITY, quality.name).apply()
         home = home.copy(pendingDownload = null, defaultQuality = quality)
-        startDownload(pending.url, pending.cookieFile, quality, pending.retryWith)
+        startDownload(pending, quality)
     }
 
     fun onDismissPendingDownload() {
-        // Cookieは認証情報。使わずに閉じたら消す
-        home.pendingDownload?.cookieFile?.delete()
+        // Cookieはまだファイルにしていない(PendingDownloadはヘッダ文字列のまま持つ)ので消すものはない
         home = home.copy(pendingDownload = null)
     }
 
@@ -311,126 +314,63 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
         home = home.copy(message = "URLをコピーした")
     }
 
-    fun onDeleteHistory(entry: HistoryEntry) {
-        commitHistory(historyLog.remove(entry.id))
-    }
+    fun onDeleteHistory(entry: HistoryEntry) = DownloadCenter.removeHistory(entry.id)
 
-    fun onClearHistory() {
-        commitHistory(historyLog.clear())
-    }
-
-    private fun commitHistory(log: HistoryLog) {
-        historyLog = log
-        home = home.copy(history = log.entries)
-        viewModelScope.launch(persist) { historyStore.save(log) }
-    }
+    fun onClearHistory() = DownloadCenter.clearHistory()
 
     // --- ダウンロード ---
 
     /**
-     * @param retryWith 失敗したときに一度だけやり直す先(Cookieファイルと URL を作る関数)。
-     *   動画バッジ経由で、ページURLのextractorが無いサイトを `<video>` の直リンクで救うため
+     * 実行を [DownloadCenter] へ渡す。ここから先は ForegroundService([com.saneiclover.videovault.data.DownloadService])が
+     * 走らせるので、**この画面が消えてもダウンロードは続く**。
      */
-    private fun startDownload(
-        url: String,
-        cookieFile: File?,
-        quality: Quality,
-        retryWith: (() -> Pair<File?, String>)? = null,
-    ) {
-        if (home.job != null) {
+    private fun startDownload(pending: PendingDownload, quality: Quality) {
+        if (DownloadCenter.isBusy) {
             home = home.copy(message = "ダウンロードは1件ずつ実行する(実行中のものを待つか中断する)。")
             return
         }
-        if (!repository.hasStorageAccess()) {
+        if (!DownloadCenter.hasStorageAccess(getApplication())) {
             // 公共の Download/videos へ書くには「すべてのファイルへのアクセス」が要る。
             // 未許可のまま始めると保存に失敗するので、先に設定画面へ誘導する(MainActivityが拾う)。
-            cookieFile?.delete()
             home = home.copy(
                 message = "保存先(Download/videos)へ書き込むには「すべてのファイルへのアクセス」を許可する。",
                 needStorageAccess = true,
             )
             return
         }
-        val id = UUID.randomUUID().toString()
-        val siteName = catalog.nameForUrl(url)
-        processId = id
-        cancelRequested = false
-        home = home.copy(
-            job = DownloadJob(url = url, siteName = siteName, line = "準備中(初回はpython環境の展開に数十秒かかる)…"),
-            message = null,
+        home = home.copy(message = null)
+        DownloadCenter.request(
+            getApplication(),
+            DownloadCenter.Request(
+                id = UUID.randomUUID().toString(),
+                url = pending.url,
+                siteName = pending.siteName,
+                quality = quality,
+                cookieHeader = pending.cookieHeader,
+                fallbackUrl = pending.fallbackUrl,
+            ),
         )
-        var entry = HistoryEntry(
-            id = id,
-            url = url,
-            siteName = siteName,
-            title = null,
-            startedAt = System.currentTimeMillis(),
-            finishedAt = null,
-            status = HistoryStatus.RUNNING,
-            error = null,
-            quality = quality.name,
-        )
-        commitHistory(historyLog.upsert(entry))
-
-        viewModelScope.launch {
-            val titleRef = AtomicReference<String?>(null)
-            val result = repository.download(url, cookieFile, quality, id) { percent, line ->
-                // 進捗はワーカースレッドから来る。スナップショット状態はスレッド安全なのでそのまま更新できる
-                YtdlpOutput.titleFrom(line)?.let { titleRef.set(it) }
-                home = home.copy(job = home.job?.copy(percent = percent, line = line))
-            }
-            processId = null
-            val title = titleRef.get()
-            entry = entry.copy(
-                title = title,
-                finishedAt = System.currentTimeMillis(),
-                status = when {
-                    result.isSuccess -> HistoryStatus.SUCCESS
-                    cancelRequested -> HistoryStatus.CANCELLED
-                    else -> HistoryStatus.FAILED
-                },
-                error = result.exceptionOrNull()?.let { firstLine(it.message ?: it::class.java.simpleName) },
-            )
-            commitHistory(historyLog.upsert(entry))
-            home = home.copy(
-                job = null,
-                message = result.fold(
-                    onSuccess = { "完了: ${title ?: siteName}" },
-                    onFailure = {
-                        if (cancelRequested) "中断した" else "失敗: ${it.message ?: it::class.java.simpleName}"
-                    },
-                ),
-            )
-            refreshDownloads()
-            if (result.isFailure && !cancelRequested && retryWith != null) {
-                // ページURLで取れなかった。<video> の直リンクで一度だけやり直す(履歴には両方残る)
-                val (retryCookie, retryUrl) = retryWith()
-                home = home.copy(message = "ページのURLでは取れなかったので、動画ファイルのURLで再試行する")
-                startDownload(retryUrl, retryCookie, quality)
-            }
-        }
     }
 
-    fun onCancelDownload() {
-        cancelRequested = true
-        processId?.let { repository.cancel(it) }
-    }
+    fun onCancelDownload() = DownloadCenter.cancel()
 
     fun refreshDownloads() {
         viewModelScope.launch {
-            val files = withContext(Dispatchers.IO) { repository.listDownloads() }
+            val files = withContext(Dispatchers.IO) { DownloadCenter.listDownloads() }
             home = home.copy(downloads = files)
         }
     }
 
     fun onDeleteDownload(file: DownloadedFile) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { repository.delete(file) }
+            withContext(Dispatchers.IO) { DownloadCenter.deleteDownload(file) }
             refreshDownloads()
         }
     }
 
     fun onDismissMessage() {
+        // 読んで閉じた結果は、画面が作り直されても二度と出さない
+        DownloadCenter.dismissResult()
         home = home.copy(message = null)
     }
 
@@ -438,10 +378,6 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
     fun onStorageAccessRequested() {
         home = home.copy(needStorageAccess = false)
     }
-
-    /** yt-dlpのエラーは複数行で長い。履歴には要点だけ残す(全文は完了時のメッセージとLogcatで見える)。 */
-    private fun firstLine(text: String): String =
-        text.trim().replace(Regex("\\s+"), " ").take(200)
 
     private companion object {
         const val PREF_QUALITY = "quality"

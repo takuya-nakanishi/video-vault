@@ -83,6 +83,30 @@ share_url() {
 }
 # プロセスを殺して起動し直してから探す(=ファイルに永続化されているかの確認になる)
 after_restart_has() { relaunch; has_text "$1"; }
+# 結果の帯(MessageBanner)が画面に出ているか。通知にも「完了」「失敗」の同じ文字列が出るので、
+# 帯だけが持つ閉じるボタンを併せて見る(通知を見て合格を出さないため。2026-08-25)
+# **1回のdumpで両方を見る**。2回引くと、復帰直後の再構成中に片方が空振りして
+# 出ている帯を「無い」と判定する(2026-08-25にシナリオ19で実際に踏んだ)。
+# 画面が落ち着くまで数回引き直す(出なければ失敗のままなので、緩めることにはならない)
+banner_has() {
+  local tree
+  for _ in 1 2 3 4 5; do
+    tree=$(dump)
+    if grep -qF "$1" <<<"$tree" && grep -q 'content-desc="閉じる"' <<<"$tree"; then return 0; fi
+    sleep 2
+  done
+  return 1
+}
+# 通知シェードを開いて中身を見る。アプリを離れている間はここだけが進捗の窓口になる
+notification_has() {
+  adb shell cmd statusbar expand-notifications >/dev/null 2>&1
+  sleep 2
+  local found=1
+  dump | grep -qF "$1" && found=0
+  adb shell cmd statusbar collapse >/dev/null 2>&1
+  sleep 1
+  return $found
+}
 # ブラウザ画面が出たか。重いページの読み込み中は uiautomator dump が途中で切れることがあるので
 # (2026-08-21 Google検索結果で実際に起きた)、数回引き直す
 browser_shown() {
@@ -107,6 +131,10 @@ adb shell pm clear $PKG >/dev/null 2>&1
 # 保存先(公共の Download/videos)へ書くには「すべてのファイルへのアクセス」が要る。
 # pm clear で消えるので毎回付け直す。実機では人が設定画面で許可する導線をアプリが出す
 adb shell appops set $PKG MANAGE_EXTERNAL_STORAGE allow >/dev/null 2>&1
+# ダウンロードはForegroundServiceが走らせ、進捗と結果は通知に出る。Android 13以降は実行時の
+# 許可が要り、未許可だと起動直後にダイアログが被さって以降のタップが全部外れる。
+# 実機では人が許可する導線(MainActivity.askNotificationPermission)が出る
+adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS >/dev/null 2>&1
 adb shell rm -rf "$DL_DIR" 2>/dev/null
 
 if [[ -z "$ONLY_DOWNLOAD" ]]; then
@@ -285,7 +313,7 @@ else
       ok "動画本体を取得した: $(adb shell ls -la \"$got\" | tr -d '\r')"
       # 完了メッセージが出るまで少し待つ(ファイルが先にできる)
       for i in $(seq 1 12); do has_text "完了" && break; sleep 5; done
-      has_text "完了" && ok "完了を表示した" || ng "完了が表示されない"
+      banner_has "完了" && ok "完了を表示した" || ng "完了が表示されない"
     else
       ng "取得できなかった"
       echo "  --- 画面のエラー全文 ---"
@@ -358,7 +386,10 @@ else
       has_text "画質を選んでダウンロード" && ok "バッジからも画質シートが出る" || ng "画質シートが出ない"
       dump | grep -q 'text="SD"' && ok "前回選んだSDが候補にある" || ng "画質の候補が出ない"
       tap_text "オリジナル"; sleep 3
-      has_text "ダウンロード中" && ok "タップでダウンロードが始まりホームに戻った" || ng "ダウンロードが始まらない"
+      has_text "ダウンロード中" && ok "タップでダウンロードが始まった" || ng "ダウンロードが始まらない"
+      # 2026-08-25変更: ここでホームへ飛ばさない。飛ばすとWebViewごと破棄され、
+      # 見ていた動画の再生が止まってページも読み直しになる
+      dump | grep -q 'content-desc="再読込"' && ok "ブラウザ画面に留まったまま進捗が出る" || ng "ホームへ戻ってしまった"
       got=""
       for i in $(seq 1 36); do
         sleep 5
@@ -372,6 +403,40 @@ else
     fi
   else
     ng "ブラウザで開けない"
+  fi
+
+  step "シナリオ19[正常系・本命3]: 画面を閉じてもダウンロードが続く(ForegroundService)"
+  # 前のシナリオの成果物が残っていると「取れた」を誤検出する。毎回まっさらから始める
+  adb shell rm -rf "$DL_DIR" 2>/dev/null
+  share_url "$TEST_VIDEO"
+  if tap_text "ダウンロード" && sleep 1 && tap_text "SD"; then
+    ok "ダウンロードを開始した"
+    fg=""
+    for i in $(seq 1 15); do
+      sleep 2
+      adb shell dumpsys activity services $PKG 2>/dev/null | tr -d '\r' | grep -q "isForeground=true" && { fg=1; break; }
+    done
+    [[ -n "$fg" ]] && ok "DownloadServiceがForegroundServiceとして走っている" || ng "ForegroundServiceになっていない"
+    # ホームキーでアプリを画面から外し、さらに「安全に殺せるプロセス」の掃除を撃つ。
+    # FGSが効いていればここでは死なない(効いていなければプロセスごと消える)
+    adb shell input keyevent KEYCODE_HOME >/dev/null 2>&1; sleep 2
+    adb shell am kill $PKG >/dev/null 2>&1; sleep 3
+    adb shell pidof $PKG >/dev/null 2>&1 && ok "画面を離れてもプロセスが生きている(am killで落ちない)" || ng "プロセスが落ちた"
+    # アプリを表示していない間、進捗が見える唯一の窓口が通知になる
+    notification_has "ダウンロード中" && ok "通知に進捗が出ている" || ng "進捗通知が見えない"
+    got=""
+    for i in $(seq 1 60); do
+      sleep 5
+      found=$(adb shell "find $DL_DIR -type f -size +100k \\( -name '*.mp4' -o -name '*.webm' -o -name '*.mkv' \\) 2>/dev/null" | tr -d '\r')
+      if [[ -n "$found" ]]; then got="$found"; break; fi
+    done
+    [[ -n "$got" ]] && ok "アプリを表示していない間にダウンロードが完了した" || ng "画面を離れると完了しない"
+    # プロセスを殺さずに戻る(=実行状態がDownloadCenterに残っているかの確認)
+    adb shell am start -n "$ACT" >/dev/null 2>&1; sleep 3
+    banner_has "完了" && ok "戻ると完了の帯が出ている" || ng "完了の帯が出ない"
+    after_restart_has "$TEST_VIDEO_TITLE" && ok "履歴にも残った(永続化)" || ng "履歴に残っていない"
+  else
+    ng "ダウンロードを開始できない"
   fi
 fi
 

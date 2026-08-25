@@ -231,9 +231,13 @@ Layoutlibを使ってIDE内にレンダリングするため、**WSL2の中で�
 | 入力に応じた候補の出し分け | ○ | ○ |
 | 内蔵ブラウザ・画面遷移 | ○ | ○ |
 | yt-dlpの起動とエラー表示 | ○(x86_64バイナリ同梱) | ○ |
+| ForegroundServiceでの継続(`am kill` を撃っても生きるか) | ○(煙試験シナリオ19) | ○ |
+| 通知が出ること・進捗が載ること | ○(`cmd statusbar expand-notifications` で判定) | ○ |
 | **日本語IMEの未確定文字列** | **×** | **○(ここでしか判定できない)** |
 | YouTube/Xアプリからの共有シート | ×(アプリが入っていない) | ○ |
 | 実回線でのダウンロード・省電力による中断 | × | ○ |
+| 通知の小アイコンの見た目・テーマ適用 | ×(潰れて見えないかは実機で) | ○ |
+| **動画を再生したままダウンロードして再生が止まらないこと** | ×(エミュレータの再生が不安定) | **○** |
 
 エミュレータにも日本語キーボードは追加できる(Play Store版イメージなのでGboardが入っている)が、
 **IMEの挙動はGboardのバージョンと端末で変わる**ため、判定は実機で行う。
@@ -242,6 +246,21 @@ Layoutlibを使ってIDE内にレンダリングするため、**WSL2の中で�
 
 AVDは `medium_phone`(API 36 / x86_64)が1つ。**同じAVDの二重起動は弾かれる**ので、
 起動前に `adb devices` で既に動いていないか見る。
+
+#### インストールが `Failed to allocate ... because only 0 allocatable` で落ちたら
+
+**エミュレータの `/data` が満杯**。`android install` は DeltaInstall の中間APKを
+`/data/local/tmp/patched*.apk` に残し、**消さない**。このアプリのAPKは python・ffmpeg の
+ネイティブバイナリを含んで120MBあるため、煙試験を何度か回すとすぐ数百MB積み上がる
+(2026-08-25に500MB溜まって実際に落ちた)。
+
+```bash
+adb shell df /data                                              # 使用率を見る
+adb shell "rm -f /data/local/tmp/patched*.apk /data/local/tmp/patch.seq"
+```
+
+`dalvik-cache` と `deployer.jar` は消さない(次回また置かれる)。
+**エラーが出るまで気づけない**ので、煙試験が「インストール失敗」で落ちたらまずこれを疑う。
 
 見ながら操作する(自分のターミナルから。WSLgでウィンドウが出る):
 

@@ -1,30 +1,28 @@
 package com.saneiclover.videovault.ui.home
 
 import com.saneiclover.videovault.domain.Bookmark
+import com.saneiclover.videovault.domain.DownloadJob
 import com.saneiclover.videovault.domain.DownloadedFile
 import com.saneiclover.videovault.domain.HistoryEntry
 import com.saneiclover.videovault.domain.Quality
 import com.saneiclover.videovault.domain.Suggestion
-import java.io.File
-
-/** 実行中のダウンロード1件。[percent] が null なら進捗率不明(準備中・後処理中)。 */
-data class DownloadJob(
-    val url: String,
-    val siteName: String,
-    val percent: Float? = null,
-    val line: String = "",
-)
 
 /**
  * 画質を選ぶ前のダウンロード。候補カード・バッジ・⋮メニューのどこから来ても一度ここを通り、
- * ホームの画質シートで選んでから走る。[cookieFile] はシートを閉じたら消す(認証情報を残さない)。
+ * 画質シートで選んでから走る(シートはホームでも内蔵ブラウザでも出る)。
+ *
+ * Cookieは**ファイルではなくヘッダ文字列のまま**持つ。ダウンロードはForegroundServiceが走らせるため、
+ * シートを出した時点でファイル化すると「選ばずに閉じた」場合の消し忘れが起きる。
+ * 認証情報を端末のファイルに落とすのは yt-dlp を起動する直前だけにする
+ * ([com.saneiclover.videovault.data.DownloadCenter] が書き、使用後に必ず消す)。
  */
 data class PendingDownload(
     val url: String,
     val siteName: String,
-    val cookieFile: File? = null,
-    /** 失敗時に一度だけやり直す先(Cookieファイルと URL を作る関数)。動画バッジ経由のみ */
-    val retryWith: (() -> Pair<File?, String>)? = null,
+    /** 内蔵ブラウザ由来のときだけ入る。ログインが要るサイトのCookie */
+    val cookieHeader: String? = null,
+    /** ページURLで取れなかったときに一度だけ試す直リンク(`<video>` の src)。動画バッジ経由のみ */
+    val fallbackUrl: String? = null,
 )
 
 /**
