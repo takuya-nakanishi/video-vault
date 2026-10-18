@@ -10,7 +10,7 @@
 > 現在地・次のアクション・環境の事実(接続先や既知のつまずき)がそこにある。
 > このファイルは「変わらない規約」、handoffは「いまの状況」。状況が変わったらhandoffを更新する。
 
-## スタック(2026-08-14確定)
+## スタック
 
 - Kotlin + Jetpack Compose + youtubedl-android(yt-dlpラッパー、`io.github.junkfood02.youtubedl-android`)
 - applicationId: `com.saneiclover.videovault`(debugは `.debug` サフィックス)
@@ -44,7 +44,7 @@ android install --apks=app/build/outputs/apk/debug/app-debug.apk
 - 実機デバッグはワイヤレスデバッグ(`adb pair` → `adb connect`)。USB転送(usbipd-win)は不要
 - releaseビルドの署名: 初回リリース時に `keytool -genkeypair -v -keystore videovault-release.jks -alias videovault -keyalg RSA -keysize 4096 -validity 10950` で生成。keystoreとパスワードは**gitに入れない**(gitignore済み)。実体は端末ローカル+Google Driveバックアップ。`keystore.properties` から読む方式で `app/build.gradle.kts` に後日組み込む
 
-## コード構成(2026-08-21)
+## コード構成
 
 **UI層はダミーデータで描けること**を最優先に分けてある。Compose Previewはネットワークもファイルも
 触れないため、後から直すと大工事になる(`docs/dev-setup.md`)。
@@ -67,20 +67,20 @@ res/       drawable/ic_*.xml は自作の線アイコン(24dp・2dp線)。ic_lau
 
 - **URLパターン表は `app/src/main/assets/site_patterns.json`**。サイトが増えてもコードは触らない
 - 判定・履歴・タイトル抽出・時刻表示のテストは `app/src/test/`。`./gradlew testDebugUnitTest` で実機なしに回る
-- 内蔵ブラウザは**ダウンロードを始めてもホームへ戻らない**(2026-08-25)。画質シート・進捗・結果を
+- 内蔵ブラウザは**ダウンロードを始めてもホームへ戻らない**。画質シート・進捗・結果を
   ブラウザ画面の上に重ねる。戻すとWebViewが破棄され、見ていた動画の再生が止まってページも読み直しになる
 - **表示名は「ゲットVIDEO」**(`res/values/strings.xml`)。パッケージ名 `com.saneiclover.videovault` は
   物理名で、変えるとデータを引き継げない別アプリになるため変えない
 - 色・アイコン・画面構造の決定は `docs/ui-ux.md`「デザインシステム」が正
 - 状態は Flow ではなく Compose のスナップショット状態(`mutableStateOf`)で持つ。
   **入力欄の値を非同期に戻すと日本語IMEの未確定文字列が確定させられる**ため、同期更新にしている
-- **ダウンロードの実行状態と履歴だけはViewModelが持たない**(2026-08-25。次節)
+- **ダウンロードの実行状態と履歴だけはViewModelが持たない**(次節)
 
-## ダウンロードの実行(2026-08-25確立)
+## ダウンロードの実行
 
 **ダウンロードはViewModelではなくForegroundServiceが走らせる。** ViewModelの `viewModelScope` で
-走らせていた頃は、ホームに戻る・他のアプリを見る・内蔵ブラウザで動画を再生し続ける、のいずれでも
-プロセスが落とされ得て、そのたびにダウンロードが死んだ。
+走らせると、ホームに戻る・他のアプリを見る・内蔵ブラウザで動画を再生し続ける、のいずれでも
+プロセスが落とされ得て、そのたびにダウンロードが死ぬ。
 
 | 部品 | 役割 |
 |---|---|
@@ -88,7 +88,7 @@ res/       drawable/ic_*.xml は自作の線アイコン(24dp・2dp線)。ic_lau
 | `DownloadService` | 実行の器。通知を出し、`DownloadCenter.execute` を回し、終わったら自分を止める |
 | `VideoVaultViewModel` | 画面の状態。破棄されてもダウンロードには影響しない |
 
-- **履歴の所有者をDownloadCenterへ移したのが要点**。アプリを閉じている間に終わった分も履歴に残り、
+- **履歴の所有者をDownloadCenterにしてあるのが要点**。アプリを閉じている間に終わった分も履歴に残り、
   `files/history.json` へ書かれる(ViewModelが生きている必要がない)
 - サービス種別は `dataSync`(Manifest)。起動は前面のActivityからなのでバックグラウンド起動制限に掛からない。
   `START_NOT_STICKY`(URLを失った再起動には意味がない)。**タスクからスワイプで消されても止めない**
@@ -98,7 +98,7 @@ res/       drawable/ic_*.xml は自作の線アイコン(24dp・2dp線)。ic_lau
   Intentに載せるのは識別子だけで、URLもCookieもプロセス内に留める
 - 同時実行は**1件のまま**(2件目は断る)。キューは未実装
 
-## yt-dlp運用の要点(2026-08-19確立・ここが動かないとアプリが無価値になる)
+## yt-dlp運用の要点(ここが動かないとアプリが無価値になる)
 
 YouTubeダウンロードは**3つの原因が層をなして壊れる**。全部潰した状態が現在。順に理解しておくこと。
 
@@ -116,7 +116,7 @@ YouTubeダウンロードは**3つの原因が層をなして壊れる**。全�
 **将来また403やダウンロード失敗が出たら、まずこの3層を上から確認する。**
 エラー文言に `JavaScript runtime` が含まれるかどうかが、2と3の切り分けになる。
 
-### 4層目: デュアルスタック回線でのDNS解決失敗(2026-08-21確立)
+### 4層目: デュアルスタック回線でのDNS解決失敗
 
 実回線(IPv6あり)で `[Errno 7] No address associated with hostname. Giving up after 10 retries` が出て
 落ちることがある。抽出は通るのに**動画本体(CloudFront等)のセグメント取得だけ**が落ちるのが特徴
@@ -125,7 +125,7 @@ YouTubeダウンロードは**3つの原因が層をなして壊れる**。全�
 元々起きないため、この失敗の再現は実機でしかできない。エラー文に `No address associated with hostname` が
 あればこれ。全文は Logcat `VideoVaultDownload` に出す。
 
-## 動作確認(2026-08-19確立)
+## 動作確認
 
 **実機へ配る前に、必ずエミュレータで煙試験を通す。** 人の目視に頼らず、
 uiautomatorのビューツリー(テキスト)で判定するので、エージェントが単独で回せる。
@@ -149,15 +149,15 @@ scripts/deploy-device.sh               # ビルド→実機インストール→
 
 ## MVPスコープ(v0.1)
 
-- URL入力(またはYouTube/Xアプリの共有シートから受取)→ yt-dlpでダウンロード → 公共の `Download/videos/` へ保存(2026-08-21・人間の指定。`MANAGE_EXTERNAL_STORAGE` が要る。yt-dlpは実パスへ書くためMediaStore不可)
+- URL入力(またはYouTube/Xアプリの共有シートから受取)→ yt-dlpでダウンロード → 公共の `Download/videos/` へ保存(`MANAGE_EXTERNAL_STORAGE` が要る。yt-dlpは実パスへ書くためMediaStore不可)
 - 対象はYouTube・X(認証不要でyt-dlpが通る範囲)
 - ログインが要るサイトは**内蔵ブラウザでログイン → Cookieを yt-dlp へ渡す**導線(`docs/ui-ux.md` 導線2)。
   動画の通信を横取りして解析する方式は採らない
-- 内蔵ブラウザでは**ページ内の動画の枠の右下に弾むダウンロードバッジ**を出す(`assets/video_badge.js` を注入。
-  2026-08-21)。常設のフッターボタンは無い。**JSは `innerHTML` を使わない**(YouTube等のTrusted Typesで止まる)
+- 内蔵ブラウザでは**ページ内の動画の枠の右下に弾むダウンロードバッジ**を出す(`assets/video_badge.js` を注入)。
+  常設のフッターボタンは無い。**JSは `innerHTML` を使わない**(YouTube等のTrusted Typesで止まる)
 - 実装済みの範囲と仕様からの逸脱は `docs/ui-ux.md`「実装状況」が正
 
-## 配布方法(2026-08-14明確化)
+## 配布方法
 
 - 配布は**APK直インストールのみ**(ビルドして自分の端末へadbで入れる)。ストア・審査・アカウントは介在しない
 - **Playのどのトラックにも載せない**(内部テスト含む)。法人Play開発者アカウントにDL系アプリが載ると
@@ -176,9 +176,8 @@ Googleは「開発者が誰かを確認するだけで、アプリの内容は�
 1. **日本語IMEの挙動が未検証**(エミュレータの英語キーボードでは確かめられない)。
    実機を繋いだら最初に「かれの」を入力し、未確定文字列が勝手に確定しないことを見る。
    ここが破綻するならUIの技術選定そのものを見直す(`docs/ui-ux.md`)
-2. ~~保存先がアプリ専用領域~~ → **公共の `Download/videos/` へ書き出す対応を実施済み**(2026-08-21)。`MANAGE_EXTERNAL_STORAGE`(すべてのファイルへのアクセス)で直接パスに書く。未許可なら設定画面へ誘導する
-3. ~~ダウンロード中に画面を閉じると中断される~~ → **ForegroundServiceへ移行済み**(2026-08-25。前節)。
-   残る制約は**1件ずつしか流せない**こと(2件目は断る。キューは未実装)
+2. 公共の `Download/videos/` へは `MANAGE_EXTERNAL_STORAGE`(すべてのファイルへのアクセス)で直接パスに書く。未許可なら設定画面へ誘導する
+3. ダウンロードは**1件ずつしか流せない**(2件目は断る。キューは未実装)
 4. 設定画面が無い。再生・共有は未実装(再試行は履歴から、yt-dlp本体の更新は実装済み)
 5. GFS(有料会員サイト)は技術調査未了(DRM有無・Cookie認証でのyt-dlp可否)。調査はPC側yt-dlpで先に実施し、通る場合のみ判定表へ追加
 6. 文字起こし・分析はアプリに持たせない(PC/クラウド側の後段。llm-wiki側パイプラインと接続)
