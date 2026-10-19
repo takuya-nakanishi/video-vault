@@ -256,7 +256,7 @@ Cookieを渡す方式なら、サイト対応の追随は yt-dlp 本体に任せ
   最有力の原因。http(s)以外のスキームは `shouldOverrideUrlLoading` で横取りし、外のアプリは開かず
   (開くとCookieが使えず本アプリの目的を果たせない)、帯で知らせて「サイトのトップへ」で復帰させる。
   遷移・エラー・JSコンソールは Logcat `VideoVaultBrowser` に出し、debugビルドはDevToolsを有効にした
-  (`scripts/webview-inspect.sh`)。**実機で白画面が出たら、まずこのログを見る**
+  (`adb logcat -s VideoVaultBrowser:V`)。**実機で白画面が出たら、まずこのログを見る**
 - **システムバーのアイコン色は自動では合わない。** ライトモードで時計や電池が白く沈んでいた
   (2026-08-21のスクリーンショットで発覚)。`enableEdgeToEdge()` を `setContent` の前で呼ぶと
   ライト/ダークに応じて切り替わる

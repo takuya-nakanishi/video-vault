@@ -44,7 +44,7 @@
 
 実機は `adb devices` に `adb-56251FDCQ001BB-...` として**接続済みのことがある**(2026-08-21はmDNS経由で見えていた)。
 見えていなければ、人間に Pixel の 設定 > システム > 開発者向けオプション > ワイヤレスデバッグ の
-ポート番号を聞いて `scripts/connect-pixel.sh <ポート>` → `scripts/deploy-device.sh`。
+ポート番号を聞いて `adb connect 100.91.182.103:<ポート>`(別LANは先にMTUクランプ。`docs/dev-setup.md`)→ `scripts/deploy-device.sh`。
 
 **実機で人に見てもらう点**(エミュレータでは確認できない):
 - **動画を再生したままバッジでダウンロードを始め、再生が止まらないこと**(今回の変更の目的)
@@ -97,7 +97,7 @@ WebViewの高さが WRAP_CONTENT で CSS の `vh`/`height:100%` が0に潰れて
 それでもTikTok側が動画ページへの遷移を毎回アプリへ振るなら、⋮「PC版サイトで表示」を使うか、
 TikTokアプリの共有からURLをこのアプリへ送る運用(判定表にあるので直接DLが走る)。
 
-**内蔵ブラウザの調査は `scripts/webview-inspect.sh`**(Logcat `VideoVaultBrowser` + DevTools)と
+**内蔵ブラウザの調査は Logcat の `VideoVaultBrowser`**(`adb logcat -s VideoVaultBrowser:V`)と
 **`scripts/webview-eval.py`**(ページ内でJSを評価)。uiautomatorはWebView内部のテキストを拾えないので、
 中の状態はDevTools(CDP)で見る(debugビルドで有効)。
 
@@ -141,15 +141,13 @@ adb devices | grep emulator || \
 ./scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ(速い)
 
 # 実機へ
-./scripts/connect-pixel.sh <ポート> && ./scripts/deploy-device.sh
+adb connect 100.91.182.103:<ポート> && ./scripts/deploy-device.sh
 ```
 
 - **非対話シェルでは `~/.bashrc` が読まれない**。`JAVA_HOME` と `ANDROID_HOME` を明示的に渡すか、
   スクリプト経由で実行する(スクリプトは自分で設定している)
 - 煙試験を長時間の前景で待たない。バックグラウンドで走らせてログを監視する。**`cd` を忘れて空振りしやすい**
 - 煙試験は冒頭で `pm clear` して履歴・ブックマークを初期化する。**エミュレータ上のデータは試験のたびに消える**
-- 画面の見た目を人に見せるときは `./scripts/screenshots.sh`(全画面・ライト/ダーク・ランチャーを
-  `build/screenshots/` に撮る)。煙試験の直後に流すと実データ入りで撮れる。合否判定は煙試験が担う
 
 ## 環境の事実(2026-08-21時点)
 
@@ -173,7 +171,7 @@ adb devices | grep emulator || \
 3. **`tap_text` は完全一致を優先する**。ホームに「最近のダウンロード」見出しができたため、
    部分一致だけだと「ダウンロード」ボタンの代わりに見出しを押す
 4. **実機のペアリングコードはダイアログを閉じると即失効**する。コードをもらったら即座に叩く
-5. **別LANからのadbはMTUで固まる**。`scripts/connect-pixel.sh` が宛先限定のMTUクランプを毎回張る
+5. **別LANからのadbはMTUで固まる**。宛先限定のMTUクランプ(`sudo ip route replace 100.91.182.103/32 dev eth0 mtu 1000`)を、WSLを再起動するたびに張る
 6. **エミュレータのウィンドウ表示は実用外**。人間の動作確認は実機で行うと決めてある
 7. **`material-icons-core` にあるアイコンは限られる**(Add/Close/Delete/Refresh/Search/ArrowBack等)。
    それ以外は `res/drawable/ic_*.xml` に自作してある。`material-icons-extended` は入れない(APK肥大)

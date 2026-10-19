@@ -366,11 +366,10 @@ adb pair 100.91.182.103:PORT_A     # 6桁コード入力(初回のみ)
 adb connect 100.91.182.103:PORT_B  # ワイヤレスデバッグ画面のメインのポート
 ```
 
-接続は `scripts/connect-pixel.sh` を使う(下記MTU対処を毎回自動で張る):
+別LANからは、叩く前に宛先限定のMTUクランプを張る(下記「ハマった点」1。WSLを再起動すると消えるので、そのたびに張り直す。同一LANには影響しない):
 
 ```bash
-scripts/connect-pixel.sh --pair 33757 923616   # 初回のみ(ペア設定画面のポートと6桁コード)
-scripts/connect-pixel.sh 35907                 # 以後はこれだけ(メインのポート)
+sudo ip route replace 100.91.182.103/32 dev eth0 mtu 1000
 ```
 
 **ハマった点(2026-08-18実測)**:

@@ -135,9 +135,7 @@ scripts/smoke-test.sh                  # 全19シナリオ・64チェック(正�
 scripts/webview-eval.py <serial> <url> <js>  # 内蔵ブラウザの中でJSを評価(debug限定。uiautomatorはWebView内を見られない)
 scripts/smoke-test.sh --only-download  # 実ダウンロードとその履歴だけ(原因追跡の反復用)
 scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ
-scripts/screenshots.sh                 # 全画面のスクリーンショット(人に見せる用。判定はしない)
-scripts/webview-inspect.sh             # 内蔵ブラウザの遷移ログとDevTools(実機で白画面が出たときに最初に見る)
-scripts/connect-pixel.sh 38705         # 実機へadb接続(別LANはTailscale経由。MTU対処込み)
+adb connect 100.91.182.103:38705  # 実機へadb接続(別LANは先にMTUクランプ。docs/dev-setup.md)
 scripts/deploy-device.sh               # ビルド→実機インストール→起動
 ```
 
