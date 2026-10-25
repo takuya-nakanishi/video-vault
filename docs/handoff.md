@@ -193,4 +193,4 @@ adb connect 100.91.182.103:<ポート> && ./scripts/deploy-device.sh
 - 仕様: `docs/requirements.md`(要件。2026-08-21の追加要件も)、`docs/ui-ux.md`(UI/UX仕様・デザインシステム・実装状況)
 - 手順: `docs/dev-setup.md`(環境構築・エミュレータ/実機の動作確認・落とし穴)
 - ステータス・期日の正: Works の PDR
-- 設計決定の記録の正: fire側 `llm-wiki/raw/`
+- 設計決定の正: モノレポ直下の `docs/`(二層構造と機能境界は `docs/配布形態の二層構造と機能境界.md`)。調べたことと決定の経緯は `llm-wiki/wiki/`
