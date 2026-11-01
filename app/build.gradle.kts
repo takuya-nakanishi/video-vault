@@ -26,7 +26,7 @@ android {
         }
         release {
             isMinifyEnabled = false
-            // 署名は初回リリース時にkeystore.properties経由で設定(CLAUDE.md参照)。それまではdebugビルドで実機運用
+            // 署名は初回リリース時にkeystore.properties経由で設定(AGENTS.md参照)。それまではdebugビルドで実機運用
         }
     }
     compileOptions {

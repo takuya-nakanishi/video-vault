@@ -1,7 +1,7 @@
 # video-vault 引き継ぎ(2026-08-25時点)
 
 **新しいセッションはこのファイルを最初に読む。** 現在地・次にやること・つまずきどころが揃っている。
-役割分担の原則は「規約は各CLAUDE.md、手順は`dev-setup.md`、**いま何をすべきかはこのファイル**」。
+役割分担の原則は「規約は各AGENTS.md、手順は`dev-setup.md`、**いま何をすべきかはこのファイル**」。
 状況が変わったらこのファイルを更新すること(古い引き継ぎは害になる)。
 
 ## 現在地: 画面を閉じてもダウンロードが続くようになった(2026-08-25)
@@ -14,7 +14,7 @@
 
 **エミュレータ上で煙試験20シナリオ・72チェックすべて合格**(`scripts/smoke-test.sh`)。単体テスト30件合格。
 
-- 構造の要点は `../CLAUDE.md`「ダウンロードの実行」が正。**実行状態と履歴の持ち主を
+- 構造の要点は `../AGENTS.md`「ダウンロードの実行」が正。**実行状態と履歴の持ち主を
   ViewModelから `DownloadCenter`(プロセス寿命のobject)へ移した**のが中核
 - **画面が無い間に終わった結果は `DownloadCenter` が抱えて、次に画面が付いたとき1度だけ渡す**。
   これが無いと、アプリを閉じている間に終わったダウンロードの結果が(通知を切っている人には)
@@ -79,7 +79,7 @@ WebView内で止める実装で、ログイン後もアプリ内に留まりロ�
 **NewsPicksの動画ダウンロードで `[Errno 7] No address associated with hostname` が出た**(実機)。
 抽出は通るのに動画本体(CloudFront `vod.newspicks.com`)のセグメント取得だけがDNSで落ちる。
 デュアルスタック回線での `getaddrinfo` のAAAA詰まり → **`--force-ipv4` を常時付与して対処**
-(CLAUDE.md「yt-dlp運用の要点」4層目)。IPv4のみのエミュレータでは再現しないため、**実機で通るか要確認**。
+(AGENTS.md「yt-dlp運用の要点」4層目)。IPv4のみのエミュレータでは再現しないため、**実機で通るか要確認**。
 
 **Xのパスキー2要素認証は通せない(Androidの制限。ui-ux.md「パスキー」)。**
 ユーザーはXにパスキーのみ設定・パスワード削除済み。回避はX側で「認証アプリ(TOTP)」か「SMS」の
@@ -162,7 +162,7 @@ adb connect 100.91.182.103:<ポート> && ./scripts/deploy-device.sh
 
 ## つまずきどころ(すべて実際に踏んだ)
 
-詳細は `docs/dev-setup.md`「踏みやすい落とし穴」と `CLAUDE.md`「yt-dlp運用の要点」。要点だけ:
+詳細は `docs/dev-setup.md`「踏みやすい落とし穴」と `AGENTS.md`「yt-dlp運用の要点」。要点だけ:
 
 1. **YouTubeのDLが403で落ちたら、原因は3層のどれか**。エラー文に `JavaScript runtime` が
    含まれるかで切り分ける。`--js-runtimes` を自分で渡してはいけない(ライブラリの自動付与を壊す)
@@ -189,7 +189,7 @@ adb connect 100.91.182.103:<ポート> && ./scripts/deploy-device.sh
 
 ## 参照先
 
-- 規約: `apps/video-vault/CLAUDE.md`(スタック・yt-dlp運用・動作確認)、モノレポルートの `CLAUDE.md`
+- 規約: `apps/video-vault/AGENTS.md`(スタック・yt-dlp運用・動作確認)、モノレポルートの `AGENTS.md`
 - 仕様: `docs/requirements.md`(要件。2026-08-21の追加要件も)、`docs/ui-ux.md`(UI/UX仕様・デザインシステム・実装状況)
 - 手順: `docs/dev-setup.md`(環境構築・エミュレータ/実機の動作確認・落とし穴)
 - ステータス・期日の正: Works の PDR

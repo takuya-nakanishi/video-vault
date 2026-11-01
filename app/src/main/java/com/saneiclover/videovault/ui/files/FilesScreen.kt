@@ -44,7 +44,7 @@ import com.saneiclover.videovault.ui.components.formatSize
 
 /**
  * 端末に保存済みのファイル。容量の整理(削除)が目的の画面。
- * 再生・共有は次版(CLAUDE.md「既知の制約」)。
+ * 再生・共有は次版(AGENTS.md「既知の制約」)。
  */
 @Composable
 fun FilesScreen(

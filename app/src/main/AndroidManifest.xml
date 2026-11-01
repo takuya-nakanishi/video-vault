@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 保存先を公共の Download/videos にするため。yt-dlpは実ファイルパスへ書くので、
          MediaStoreのcontent URIではなく「すべてのファイルへのアクセス」で直接書く。
-         サイドロード専用アプリ(Play非配信)なので使ってよい(モノレポCLAUDE.md「二層構造」) -->
+         サイドロード専用アプリ(Play非配信)なので使ってよい(モノレポのAGENTS.md「二層構造」) -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <!-- 画面を閉じてもダウンロードを続けるためのForegroundService(DownloadService)。
          種別は dataSync = ユーザーが明示的に始めたデータ転送 -->
