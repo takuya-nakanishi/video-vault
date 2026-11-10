@@ -6,6 +6,7 @@ import android.os.Environment
 import android.util.Log
 import com.saneiclover.videovault.domain.DownloadedFile
 import com.saneiclover.videovault.domain.Quality
+import com.saneiclover.videovault.domain.Vidyard
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -60,17 +61,25 @@ class DownloadRepository(
     /**
      * @param cookieFile ログインが必要なサイト向け。使用後は呼び出し側で消さず、ここで必ず消す
      * @param processId 中断([cancel])に使う識別子
+     * @param videoPassword 動画のパスワード(いまは Vidyard だけが使う)。メモリにだけ置き、ログにも履歴にも書かない
      */
     suspend fun download(
         url: String,
         cookieFile: File?,
         quality: Quality,
         processId: String,
+        videoPassword: String? = null,
         onProgress: (percent: Float?, line: String) -> Unit,
     ): Result<Unit> = withContext(io) {
         runCatching {
             ensureInitialized()
             updateYtdlp(onProgress)
+            // Vidyard のパスワード保護は yt-dlp が解けない。ここで解錠し、トークンだけを yt-dlp へ渡す
+            // (VidyardUnlocker。保護されていなければ null で、何も付けない)
+            val vidyardToken = Vidyard.playerUuidOf(url)?.let { uuid ->
+                onProgress(null, "Vidyardの保護を確認中…")
+                VidyardUnlocker.accessTokenFor(uuid, videoPassword)
+            }
             val request = YoutubeDLRequest(url).apply {
                 addOption("-o", "${outputDir.absolutePath}/%(title)s.%(ext)s")
                 addOption("--no-mtime")
@@ -89,6 +98,8 @@ class DownloadRepository(
                 // QuickJSを使うが、`--js-runtimes quickjs:<パス>` はライブラリが内部で付与するため
                 // ここでは指定しない(パス無しで自前指定すると、その自動付与を壊して403に戻る)
                 cookieFile?.let { addOption("--cookies", it.absolutePath) }
+                // 解錠したトークン。yt-dlp は全ての通信にこのヘッダを付け、Vidyard がそれを見て動画の URL を返す
+                vidyardToken?.let { addOption("--add-header", "${VidyardUnlocker.ACCESS_HEADER}:$it") }
             }
             YoutubeDL.getInstance().execute(request, processId) { percent, _, line ->
                 onProgress(percent.takeIf { it >= 0f }?.div(100f), line)

@@ -45,7 +45,15 @@ object DownloadCenter {
         val cookieHeader: String? = null,
         /** ページURLで取れなかったときに一度だけ試す直リンク。動画バッジ経由のみ */
         val fallbackUrl: String? = null,
-    )
+        /**
+         * 動画のパスワード(いまは Vidyard だけ)。画質シートで入れたもの。
+         * **メモリにだけ置き、履歴にもファイルにも書かない**(履歴からやり直すときは入れ直す)
+         */
+        val videoPassword: String? = null,
+    ) {
+        /** Cookieとパスワードは認証情報。ログや例外の文に出さないため、既定の toString を使わない */
+        override fun toString() = "Request(id=$id, url=$url, siteName=$siteName, quality=$quality)"
+    }
 
     interface Listener {
         fun onJobChanged(job: DownloadJob?)
@@ -235,6 +243,7 @@ object DownloadCenter {
             cookieFile = CookieJar.write(appContext.cacheDir, url, request.cookieHeader),
             quality = request.quality,
             processId = entryId,
+            videoPassword = request.videoPassword,
         ) { percent, line ->
             YtdlpOutput.titleFrom(line)?.let { title.set(it) }
             val next = DownloadJob(url, request.siteName, percent, line)

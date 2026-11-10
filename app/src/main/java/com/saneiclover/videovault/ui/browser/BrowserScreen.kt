@@ -99,7 +99,7 @@ fun BrowserScreen(
     onVideoDownload: (pageUrl: String, targetUrl: String, mediaSrc: String, cookieHeader: String?) -> Unit,
     /** ホームと同じダウンロードの状態。この画面から離れずに選び・見守り・中断できる */
     download: BrowserDownloadState,
-    onQualityChosen: (Quality) -> Unit,
+    onQualityChosen: (Quality, String?) -> Unit,
     onDismissPendingDownload: () -> Unit,
     onCancelDownload: () -> Unit,
     onDismissMessage: () -> Unit,

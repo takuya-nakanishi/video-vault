@@ -108,7 +108,7 @@ fun HomeScreen(
     onHistoryOpen: (HistoryEntry) -> Unit,
     onHistoryCopy: (HistoryEntry) -> Unit,
     onHistoryDelete: (HistoryEntry) -> Unit,
-    onQualityChosen: (Quality) -> Unit,
+    onQualityChosen: (Quality, String?) -> Unit,
     onDismissPendingDownload: () -> Unit,
     modifier: Modifier = Modifier,
     now: Long = System.currentTimeMillis(),
@@ -526,7 +526,7 @@ private fun PreviewHost(state: HomeUiState) = VideoVaultTheme {
             onBookmarkClick = {}, onAddBookmark = { _, _ -> true }, onUpdateBookmark = { _, _, _ -> true }, onRemoveBookmark = {},
             onOpenHistory = noop, onOpenFiles = noop,
             onHistoryRetry = {}, onHistoryOpen = {}, onHistoryCopy = {}, onHistoryDelete = {},
-            onQualityChosen = {}, onDismissPendingDownload = noop,
+            onQualityChosen = { _, _ -> }, onDismissPendingDownload = noop,
             now = PREVIEW_NOW,
         )
     }

@@ -3,9 +3,14 @@
 # 実機へ配る前にこれを通す。UIの検証はスクリーンショットではなく
 # uiautomatorのビューツリー(テキスト)で行うので、人の目が要らない。
 #
-# 使い方: scripts/smoke-test.sh [--skip-download | --only-download]
+# 使い方: scripts/smoke-test.sh [--skip-download | --only-download | --only-vidyard]
 #   --skip-download を付けると実ダウンロード(ネットワーク・時間がかかる)を飛ばす
 #   --only-download は実ダウンロードとその後の確認だけ(原因追跡の反復用)
+#   --only-vidyard は Vidyard のシナリオ(20〜24)だけ
+#
+# パスワード付きの Vidyard 動画のシナリオ(23・24)は、URL とパスワードを環境変数で渡したときだけ走る。
+# **どちらもリポジトリに書かない**(他社の保護された動画で、パスワードは認証情報)。
+#   VIDYARD_SECURE_URL=<共有ページのURL> VIDYARD_SECURE_PASSWORD=<パスワード> scripts/smoke-test.sh --only-vidyard
 #
 # 判定の流儀: ok/ng で数え、最後に失敗0で合格。`set -e` にしないのは、1つ落ちても残りの
 # シナリオを流して全体像を出すため。**ただしビルド・インストールの失敗は即終了する**
@@ -25,9 +30,13 @@ DL_DIR="/sdcard/Download/videos"
 # yt-dlp公式テスト動画 BaW_jenozKc は Video unavailable になるため使わない
 TEST_VIDEO="https://youtu.be/jNQXAC9IVRw"
 TEST_VIDEO_TITLE="Me at the zoo"
+# 公開の Vidyard 動画(135秒。チャプターのメニュー付き)。yt-dlp の Vidyard 抽出器のテストにも使われている
+VIDYARD_PUBLIC="https://share.vidyard.com/watch/wL237MtNgZUHo6e8WPiJbF"
 SKIP_DOWNLOAD=${1:-}
 ONLY_DOWNLOAD=""
+ONLY_VIDYARD=""
 [[ "$SKIP_DOWNLOAD" == "--only-download" ]] && ONLY_DOWNLOAD=1
+[[ "$SKIP_DOWNLOAD" == "--only-vidyard" ]] && { ONLY_DOWNLOAD=1; ONLY_VIDYARD=1; }
 
 PASS=0; FAIL=0
 ok()   { echo "  ✅ $1"; PASS=$((PASS+1)); }
@@ -122,8 +131,12 @@ if ! ./gradlew assembleDebug -q; then
   ng "ビルド失敗(古いAPKで試験しないためここで終了)"; exit 1
 fi
 ok "ビルド成功"
-if ! android install --device="$SERIAL" --apks=app/build/outputs/apk/debug/app-debug.apk >/dev/null 2>&1; then
-  ng "インストール失敗"; exit 1
+install_apk() { android install --device="$SERIAL" --apks=app/build/outputs/apk/debug/app-debug.apk >/dev/null 2>&1; }
+if ! install_apk; then
+  # エミュレータの空きが少ないと上書きに失敗する(新旧2つ分の場所が要る。INSTALL_FAILED_INSUFFICIENT_STORAGE)。
+  # 試験のデータは直後の pm clear で消すので、外してから入れ直してよい(2026-11-10 に空き約340MBで実際に踏んだ)
+  adb uninstall $PKG >/dev/null 2>&1
+  install_apk || { ng "インストール失敗(エミュレータの空きを確かめる: adb shell df -h /data)"; exit 1; }
 fi
 ok "インストール成功"
 # 履歴・ブックマークを初期状態に戻す(前回の試験結果に左右されないため)
@@ -213,6 +226,11 @@ has_text "対象外"          && ok "対象外の表示あり" || ng "対象外�
 has_text "DRM"             && ok "理由の表示あり"   || ng "理由が表示されない"
 if dump | grep -qE 'text="ダウンロード"'; then ng "対象外なのにDLボタンが出ている"; else ok "DLボタンは出ない"; fi
 
+step "シナリオ6b[正常系]: Vidyard の URL もダウンロードが第一候補になる(2026-11-10)"
+share_url "$VIDYARD_PUBLIC"
+has_text "Vidyard · share.vidyard.com" && ok "Vidyard として判定した" || ng "Vidyard と判定されない"
+dump | grep -qE 'text="ダウンロード"' && ok "ダウンロード候補あり" || ng "ダウンロード候補が出ない"
+
 step "シナリオ7[正常系]: キーワードは検索になる"
 share_url "kessan happyou"
 has_text "Googleで検索" && ok "検索候補あり" || ng "検索候補が出ない"
@@ -293,8 +311,10 @@ fi
 fi  # ONLY_DOWNLOAD
 
 if [[ "$SKIP_DOWNLOAD" == "--skip-download" ]]; then
-  echo; echo "シナリオ14〜17[実ダウンロード]は --skip-download のため省略"
+  echo; echo "シナリオ14〜24[実ダウンロード]は --skip-download のため省略"
 else
+  WEB_EVAL="scripts/webview-eval.py"
+  if [[ -z "$ONLY_VIDYARD" ]]; then
   step "シナリオ14[正常系・本命]: 実際にYouTubeからダウンロードできる(SDを選ぶ)"
   share_url "$TEST_VIDEO"
   if tap_text "ダウンロード"; then
@@ -437,6 +457,130 @@ else
     after_restart_has "$TEST_VIDEO_TITLE" && ok "履歴にも残った(永続化)" || ng "履歴に残っていない"
   else
     ng "ダウンロードを開始できない"
+  fi
+  fi  # ONLY_VIDYARD
+
+  # --- Vidyard(2026-11-10)。パスワード付きの動画は、アプリが解錠してトークンを yt-dlp へ渡す ---
+  PW_FIELD="パスワード(保護された動画だけ)"
+  # 動画本体(.ytdl・.part を除く100KB超)が保存先にあるか。合格判定を緩めないため拡張子とサイズまで見る
+  find_video() { adb shell "find $DL_DIR -type f -size +100k \\( -name '*.mp4' -o -name '*.webm' -o -name '*.mkv' \\) 2>/dev/null" | tr -d '\r'; }
+
+  step "シナリオ20[異常系]: Vidyard でない動画の画質シートにはパスワード欄を出さない"
+  share_url "$TEST_VIDEO"
+  if tap_text "ダウンロード"; then
+    sleep 1
+    # シートが出ていないせいで「欄が無い」と判定しないよう、先にシートを確かめる
+    has_text "画質を選んでダウンロード" && ok "画質シートが出た" || ng "画質シートが出ない"
+    if has_text "$PW_FIELD"; then ng "YouTube なのにパスワード欄が出た"; else ok "YouTube の画質シートにパスワード欄は無い"; fi
+    adb shell input keyevent KEYCODE_BACK; sleep 1
+  else
+    ng "ダウンロードボタンをタップできない"
+  fi
+
+  step "シナリオ21[正常系・Vidyard]: 公開の Vidyard 動画を画質シートから取れる(パスワード欄は空のまま)"
+  adb shell rm -rf "$DL_DIR" 2>/dev/null
+  share_url "$VIDYARD_PUBLIC"
+  if tap_text "ダウンロード"; then
+    sleep 1
+    has_text "$PW_FIELD" && ok "Vidyard の画質シートにパスワード欄が出る" || ng "パスワード欄が出ない"
+    tap_text "SD" && ok "空欄のまま画質SDを選んだ" || ng "SDを選べない"
+    echo "  (yt-dlp更新とダウンロードで最大5分待つ)"
+    got=""
+    for i in $(seq 1 60); do
+      sleep 5
+      got=$(find_video); [[ -n "$got" ]] && break
+      has_text "失敗" && break
+    done
+    if [[ -n "$got" ]]; then
+      ok "公開の Vidyard 動画を取得した: $(adb shell ls -la \"$got\" | tr -d '\r')"
+      for i in $(seq 1 12); do has_text "完了" && break; sleep 5; done
+      banner_has "完了" && ok "完了を表示した" || ng "完了が表示されない"
+    else
+      ng "公開の Vidyard 動画を取得できない"
+      dump | grep -oE 'text="[^"]*失敗[^"]{0,200}"' | head -3
+    fi
+  else
+    ng "ダウンロードボタンをタップできない"
+  fi
+
+  step "シナリオ22[正常系・Vidyard]: 内蔵ブラウザで Vidyard の埋め込みにバッジが付き、play.vidyard.com の URL を渡す"
+  share_url "$VIDYARD_PUBLIC"
+  if tap_text "ブラウザで開く"; then
+    vis=0
+    # プレイヤーは別オリジンの iframe。v4 の埋め込みスクリプトが iframe を差し込むまで待つ
+    for i in $(seq 1 25); do
+      sleep 3
+      vis=$(python3 "$WEB_EVAL" "$SERIAL" share.vidyard.com/watch \
+        "[...document.querySelectorAll('.vv-badge')].filter(b=>b.style.display==='flex').length" 2>/dev/null || echo 0)
+      [[ "$vis" =~ ^[1-9] ]] && break
+    done
+    [[ "$vis" =~ ^[1-9] ]] && ok "Vidyard のプレイヤーにバッジが出た($vis件)" || ng "バッジが出ない(vis=$vis)"
+    if python3 "$WEB_EVAL" "$SERIAL" share.vidyard.com/watch "(()=>{const b=[...document.querySelectorAll('.vv-badge')].find(b=>b.style.display==='flex');if(!b)return 'no';b.click();return 'clicked'})()" 2>/dev/null | grep -q clicked; then
+      sleep 2
+      has_text "Vidyard · play.vidyard.com/" && ok "バッジは play.vidyard.com の URL で画質シートを出す" || ng "画質シートの URL が play.vidyard.com ではない"
+      has_text "$PW_FIELD" && ok "バッジ経由でもパスワード欄が出る" || ng "バッジ経由でパスワード欄が出ない"
+      adb shell input keyevent KEYCODE_BACK; sleep 1
+    else
+      ng "バッジをクリックできない"
+    fi
+  else
+    ng "ブラウザで開けない"
+  fi
+
+  if [[ -n "${VIDYARD_SECURE_URL:-}" ]]; then
+    step "シナリオ23[異常系・Vidyard]: パスワード付きの動画をパスワード無しで始めると、パスワードを案内して失敗する"
+    adb shell rm -rf "$DL_DIR" 2>/dev/null
+    share_url "$VIDYARD_SECURE_URL"
+    if tap_text "ダウンロード" && sleep 1 && tap_text "SD"; then
+      for i in $(seq 1 36); do sleep 5; has_text "失敗" && break; done
+      banner_has "パスワードで保護された動画" && ok "失敗の帯がパスワードを案内した" || { ng "パスワードの案内が出ない"; dump | grep -oE 'text="[^"]*失敗[^"]{0,200}"' | head -3; }
+      [[ -z "$(find_video)" ]] && ok "動画ファイルは作られていない" || ng "失敗なのにファイルがある"
+    else
+      ng "ダウンロードを始められない"
+    fi
+  else
+    echo; echo "シナリオ23[パスワード付きの Vidyard]は VIDYARD_SECURE_URL が無いため省略"
+  fi
+
+  if [[ -n "${VIDYARD_SECURE_URL:-}" && -n "${VIDYARD_SECURE_PASSWORD:-}" ]]; then
+    step "シナリオ24[正常系・Vidyard・本命]: パスワードを入れると解錠でき、動画本体の取得が始まる"
+    adb shell rm -rf "$DL_DIR" 2>/dev/null
+    share_url "$VIDYARD_SECURE_URL"
+    if tap_text "ダウンロード" && sleep 1 && tap_text "$PW_FIELD"; then
+      sleep 1
+      # input text は空白を %s で表す。端末側のシェルに解釈させないよう引用する(パスワードは表示しない)
+      pw_arg=$(python3 -c 'import shlex,sys;print(shlex.quote(sys.argv[1].replace(" ","%s")))' "$VIDYARD_SECURE_PASSWORD")
+      adb shell input text "$pw_arg"
+      adb shell input keyevent KEYCODE_ENTER; sleep 1   # 完了キーでキーボードを閉じる
+      if tap_text "SD"; then
+        ok "パスワードを入れて画質SDを選んだ"
+        # 解錠できていれば抽出が通り、動画本体(.part)が育つ。5MB を超えたら合格として中断する。
+        # エミュレータの空きが少なく(2026-11-10 は約200MB)、57分の動画を丸ごとは置けないため。
+        # 丸ごとの取得は PC の yt-dlp で確かめてある(298MB・3446秒を最後まで取得)
+        grew=""
+        for i in $(seq 1 60); do
+          sleep 5
+          grew=$(adb shell "find $DL_DIR -type f -name '*.part' -size +5M 2>/dev/null" | tr -d '\r'); [[ -n "$grew" ]] && break
+          has_text "失敗" && break
+        done
+        if [[ -n "$grew" ]]; then
+          ok "解錠でき、動画本体の取得が5MBを超えた"
+          tap_text "中断" && ok "中断を押した" || ng "中断を押せない"
+          banner_has "中断した" && ok "中断の帯が出た" || ng "中断の帯が出ない"
+        else
+          ng "動画本体の取得が始まらない"
+          dump | grep -oE 'text="[^"]*失敗[^"]{0,200}"' | head -3
+        fi
+      else
+        ng "SDを選べない(キーボードが画質の行を覆っている?)"
+      fi
+    else
+      ng "パスワード欄を押せない"
+    fi
+    # 中断した残り(.part)はエミュレータの空きを食うので消す
+    sleep 2; adb shell rm -rf "$DL_DIR" 2>/dev/null
+  else
+    echo; echo "シナリオ24[パスワード付きの Vidyard]は VIDYARD_SECURE_URL と VIDYARD_SECURE_PASSWORD が無いため省略"
   fi
 fi
 

@@ -23,6 +23,11 @@ data class PendingDownload(
     val cookieHeader: String? = null,
     /** ページURLで取れなかったときに一度だけ試す直リンク(`<video>` の src)。動画バッジ経由のみ */
     val fallbackUrl: String? = null,
+    /**
+     * 画質シートにパスワード欄を出す。Vidyard の動画のときだけ true
+     * (保護されているかは走らせるまで分からないので、Vidyard なら常に出し、空欄も許す)
+     */
+    val askPassword: Boolean = false,
 )
 
 /**

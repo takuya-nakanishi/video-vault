@@ -45,6 +45,12 @@
       "downloadable": true
     },
     {
+      "id": "vidyard",
+      "name": "Vidyard",
+      "hosts": ["vidyard.com"],
+      "downloadable": true
+    },
+    {
       "id": "netflix",
       "name": "Netflix",
       "hosts": ["netflix.com"],

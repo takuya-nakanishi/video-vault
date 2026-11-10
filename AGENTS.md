@@ -53,9 +53,11 @@ android install --apks=app/build/outputs/apk/debug/app-debug.apk
 domain/    Android非依存の純粋なKotlin。単体テストの対象
            InputClassifier(入力→候補の判定)/ SiteCatalog / Suggestion / DownloadedFile
            Bookmark(既定4件も)/ HistoryEntry+HistoryLog(履歴の台帳)/
-           YtdlpOutput(yt-dlp出力からタイトル抽出)/ RelativeTime(「3時間前」「昨日」)
+           YtdlpOutput(yt-dlp出力からタイトル抽出)/ RelativeTime(「3時間前」「昨日」)/
+           Vidyard(Vidyard の URL からプレイヤーの uuid を読む)
 data/      Androidとyt-dlpに触る層
-           SiteCatalogLoader(assets/site_patterns.json)/ DownloadRepository / CookieJar
+           SiteCatalogLoader(assets/site_patterns.json)/ DownloadRepository / CookieJar /
+           VidyardUnlocker(Vidyard のパスワード保護を解錠し、トークンを yt-dlp へ渡す)
            DownloadCenter(実行状態と履歴の持ち主)/ DownloadService(ForegroundService)
            BookmarkStore・HistoryStore(files/*.json。JsonFileで原子的に書く)
 ui/        Compose。画面は状態を持たず、状態は VideoVaultViewModel が1つで持つ
@@ -125,16 +127,42 @@ YouTubeダウンロードは**3つの原因が層をなして壊れる**。全�
 元々起きないため、この失敗の再現は実機でしかできない。エラー文に `No address associated with hostname` が
 あればこれ。全文は Logcat `VideoVaultDownload` に出す。
 
+### Vidyard のパスワード保護(2026-11-10)
+
+Vidyard(企業向けの動画配信)の**パスワード付きの動画は、yt-dlp だけでは取れない**。yt-dlp の Vidyard 抽出器が
+パスワードを扱えないため(2026-11-10 の master でも同じ)。症状は
+`An extractor error has occurred. (caused by KeyError('chapters'))`。保護された動画では
+`play.vidyard.com/player/<uuid>.json` が `type: "secure"` を返し、動画の URL(`chapters`)が入っていない。
+
+→ **アプリがプレイヤーと同じ手順で解錠し、トークンだけを yt-dlp へ渡す**(`data/VidyardUnlocker.kt`)。
+手順はプレイヤーの JS を読んで確かめ、実物の動画で通した(PC の yt-dlp で 57 分・298MB を最後まで取得)。
+
+1. `GET /player/<uuid>.json` で `type` を見る。`secure` でなければ何もしない
+2. `POST /secure/verify-access-code` に `{"uuid", "token": パスワード}` → `accessToken`
+   (誤りは 401 `{"error":"Password is incorrect"}`)
+3. yt-dlp に `--add-header "X-Video-Access:<accessToken>"` を付ける。抽出器が `player/<uuid>.json` を取るときに
+   このヘッダが乗り、動画の URL が入った応答が返る
+
+- パスワードは**画質シートの欄**で受け取る(Vidyard の URL のときだけ出る。空欄でも始められる)。
+  メモリにだけ置き、履歴にもファイルにも書かない。履歴からやり直すときは入れ直す
+- 動画の URL は自分で読まない。画質の選び方・字幕・HLS は yt-dlp に任せたまま(サイト対応の追随を yt-dlp に任せる方針は崩さない)
+- 内蔵ブラウザのプレイヤーで入れたパスワードは引き継げない。トークンはプレイヤーの iframe の中にしか無く、
+  取り出すには通信の横取りが要る(採らない方針)。画質シートで入れ直す
+- uuid の読み取り(`domain/Vidyard.kt`)は yt-dlp の `_VALID_URL` に揃えてある。URL の形を足すときは yt-dlp 側を見て揃える
+- **yt-dlp が Vidyard のパスワード(`--video-password`)に対応したら**、この解錠を外して yt-dlp に任せる
+- チャプターのメニューのような**プレイヤーの表示は取得に関係しない**。公開の動画は何もせずに取れる
+
 ## 動作確認
 
 **実機へ配る前に、必ずエミュレータで煙試験を通す。** 人の目視に頼らず、
 uiautomatorのビューツリー(テキスト)で判定するので、エージェントが単独で回せる。
 
 ```bash
-scripts/smoke-test.sh                  # 全19シナリオ・64チェック(正常系・異常系・ブックマーク・履歴・永続化・実ダウンロード・動画バッジ)
+scripts/smoke-test.sh                  # 全24シナリオ・83チェック(正常系・異常系・ブックマーク・履歴・永続化・実ダウンロード・動画バッジ・Vidyard)。パスワード付きの Vidyard の2シナリオは別(下)
 scripts/webview-eval.py <serial> <url> <js>  # 内蔵ブラウザの中でJSを評価(debug限定。uiautomatorはWebView内を見られない)
 scripts/smoke-test.sh --only-download  # 実ダウンロードとその履歴だけ(原因追跡の反復用)
 scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ
+scripts/smoke-test.sh --only-vidyard   # Vidyard だけ。パスワード付きは VIDYARD_SECURE_URL・VIDYARD_SECURE_PASSWORD を渡したときだけ走る(値はリポジトリに書かない)
 adb connect 100.91.182.103:38705  # 実機へadb接続(別LANは先にMTUクランプ。docs/dev-setup.md)
 scripts/deploy-device.sh               # ビルド→実機インストール→起動
 ```

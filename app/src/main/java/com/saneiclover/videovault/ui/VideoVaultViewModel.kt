@@ -21,6 +21,7 @@ import com.saneiclover.videovault.domain.HistoryLog
 import com.saneiclover.videovault.domain.InputClassifier
 import com.saneiclover.videovault.domain.Quality
 import com.saneiclover.videovault.domain.Suggestion
+import com.saneiclover.videovault.domain.Vidyard
 import com.saneiclover.videovault.ui.home.HomeUiState
 import com.saneiclover.videovault.ui.home.PendingDownload
 import kotlinx.coroutines.Dispatchers
@@ -280,16 +281,26 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
         home = home.copy(
-            pendingDownload = PendingDownload(url, catalog.nameForUrl(url), cookieHeader, fallbackUrl),
+            pendingDownload = PendingDownload(
+                url = url,
+                siteName = catalog.nameForUrl(url),
+                cookieHeader = cookieHeader,
+                fallbackUrl = fallbackUrl,
+                askPassword = Vidyard.playerUuidOf(url) != null,
+            ),
             message = null,
         )
     }
 
-    fun onQualityChosen(quality: Quality) {
+    /**
+     * @param password 画質シートのパスワード欄の値(Vidyard のときだけ出る。空なら null)。
+     * 保存しない。[DownloadCenter] の申し込みに載せて、yt-dlp を起動する直前の解錠にだけ使う
+     */
+    fun onQualityChosen(quality: Quality, password: String?) {
         val pending = home.pendingDownload ?: return
         prefs.edit().putString(PREF_QUALITY, quality.name).apply()
         home = home.copy(pendingDownload = null, defaultQuality = quality)
-        startDownload(pending, quality)
+        startDownload(pending, quality, password)
     }
 
     fun onDismissPendingDownload() {
@@ -324,7 +335,7 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
      * 実行を [DownloadCenter] へ渡す。ここから先は ForegroundService([com.saneiclover.videovault.data.DownloadService])が
      * 走らせるので、**この画面が消えてもダウンロードは続く**。
      */
-    private fun startDownload(pending: PendingDownload, quality: Quality) {
+    private fun startDownload(pending: PendingDownload, quality: Quality, password: String?) {
         if (DownloadCenter.isBusy) {
             home = home.copy(message = "ダウンロードは1件ずつ実行する(実行中のものを待つか中断する)。")
             return
@@ -348,6 +359,7 @@ class VideoVaultViewModel(application: Application) : AndroidViewModel(applicati
                 quality = quality,
                 cookieHeader = pending.cookieHeader,
                 fallbackUrl = pending.fallbackUrl,
+                videoPassword = password,
             ),
         )
     }

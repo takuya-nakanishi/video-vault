@@ -1,7 +1,9 @@
 // ゲットVIDEO: ページ内の動画を検出し、その枠の右下に「弾むダウンロードバッジ」を重ねる。
 // 内蔵ブラウザ(BrowserScreen)が各ページの読み込み完了時に注入する。
 //
-// - 対象: <video> と、既知の動画埋め込み <iframe>(YouTube / Vimeo / TikTok / ニコニコ / Twitch)
+// - 対象: <video> と、既知の動画埋め込み <iframe>(YouTube / Vimeo / TikTok / ニコニコ / Twitch / Vidyard)。
+//   埋め込みのプレイヤーは別オリジンの iframe で、中の <video> はこのスクリプトから見えない。iframe の src を渡す
+//   (Vidyard は play.vidyard.com/<uuid>。パスワード付きでも、この URL からアプリが解錠できる)
 // - 位置: 画面固定のレイヤーに置き、要素の getBoundingClientRect に毎フレーム追従させる
 //   (要素の中に入れると overflow:hidden や position の都合で消えるサイトがあるため)
 // - タップ: Android側の VideoVault.onVideoDownload(JSON) へ。渡すのは
@@ -16,7 +18,7 @@
 
   var LAYER_ID = 'vv-badge-layer';
   var SIZE = 44, INSET = 12, MIN_W = 96, MIN_H = 56;
-  var EMBED = /(youtube(-nocookie)?\.com\/embed\/|player\.vimeo\.com\/video\/|tiktok\.com\/embed|nicovideo\.jp\/watch\/|player\.twitch\.tv)/;
+  var EMBED = /(youtube(-nocookie)?\.com\/embed\/|player\.vimeo\.com\/video\/|tiktok\.com\/embed|nicovideo\.jp\/watch\/|player\.twitch\.tv|play\.vidyard\.com\/)/;
   var LINK = /(watch\?v=|\/shorts\/|\/status\/\d+|\/video\/\d+|\/videos?\/|\/movie|\/watch\/|\/reel\/)/;
 
   var style = document.createElement('style');

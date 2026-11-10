@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -38,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -47,10 +49,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -293,15 +298,26 @@ private fun SheetAction(
 /**
  * 画質を選んでからダウンロードするシート(2026-08-21・人間の依頼)。
  * 3択を縦に並べ、行のタップで即開始。前回の選択に印を付けて1タップで済むようにする。
+ *
+ * Vidyard の動画([PendingDownload.askPassword])では、画質の上にパスワード欄を出す(2026-11-10)。
+ * 保護されているかは走らせるまで分からないので、空欄のままでも始められる。
+ * 保護されていて空欄なら、失敗の文が「パスワードを入れる」と案内する。
+ *
+ * @param onChoose 選んだ画質と、パスワード欄の値(空・欄が無いときは null)
  */
 @Composable
 fun QualitySheet(
     pending: PendingDownload,
     current: Quality,
-    onChoose: (Quality) -> Unit,
+    onChoose: (Quality, String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // パスワードは保存しない。rememberSaveable にすると画面の保存状態に入り、端末に書かれ得る
+    var password by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val choose = { q: Quality -> onChoose(q, password.takeIf { pending.askPassword && it.isNotEmpty() }) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.padding(bottom = 24.dp)) {
             Row(
@@ -326,11 +342,29 @@ fun QualitySheet(
                 }
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            if (pending.askPassword) {
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("パスワード(保護された動画だけ)") },
+                    supportingText = { Text("Vidyardでパスワードを求められる動画は、入れてから画質を選ぶ") },
+                    singleLine = true,
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
+                    trailingIcon = {
+                        TextButton(onClick = { showPassword = !showPassword }) {
+                            Text(if (showPassword) "隠す" else "表示")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+                )
+            }
             Quality.entries.forEach { q ->
                 ListItem(
-                    modifier = Modifier.clickable { onChoose(q) },
+                    modifier = Modifier.clickable { choose(q) },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    leadingContent = { RadioButton(selected = q == current, onClick = { onChoose(q) }) },
+                    leadingContent = { RadioButton(selected = q == current, onClick = { choose(q) }) },
                     headlineContent = { Text(q.label) },
                     supportingContent = { Text(q.detail) },
                 )
