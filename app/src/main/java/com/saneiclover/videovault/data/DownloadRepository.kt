@@ -14,6 +14,10 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
+
+/** yt-dlp を起動する前に中断が押された。失敗ではなく「中断」として履歴に残る */
+class CancelledBeforeStartException : IOException("中断した")
 
 /**
  * yt-dlp(youtubedl-android)の呼び出し口。UI層はここより下を知らない。
@@ -62,6 +66,7 @@ class DownloadRepository(
      * @param cookieFile ログインが必要なサイト向け。使用後は呼び出し側で消さず、ここで必ず消す
      * @param processId 中断([cancel])に使う識別子
      * @param videoPassword 動画のパスワード(いまは Vidyard だけが使う)。メモリにだけ置き、ログにも履歴にも書かない
+     * @param isCancelled 中断が押されたか。yt-dlp を起動する前の段で見る(下の [ensureNotCancelled])
      */
     suspend fun download(
         url: String,
@@ -69,17 +74,20 @@ class DownloadRepository(
         quality: Quality,
         processId: String,
         videoPassword: String? = null,
+        isCancelled: () -> Boolean = { false },
         onProgress: (percent: Float?, line: String) -> Unit,
     ): Result<Unit> = withContext(io) {
         runCatching {
             ensureInitialized()
             updateYtdlp(onProgress)
+            ensureNotCancelled(isCancelled)
             // Vidyard のパスワード保護は yt-dlp が解けない。ここで解錠し、トークンだけを yt-dlp へ渡す
             // (VidyardUnlocker。保護されていなければ null で、何も付けない)
             val vidyardToken = Vidyard.playerUuidOf(url)?.let { uuid ->
                 onProgress(null, "Vidyardの保護を確認中…")
-                VidyardUnlocker.accessTokenFor(uuid, videoPassword)
+                VidyardUnlocker.accessTokenFor(uuid, videoPassword, isCancelled)
             }
+            ensureNotCancelled(isCancelled)
             val request = YoutubeDLRequest(url).apply {
                 addOption("-o", "${outputDir.absolutePath}/%(title)s.%(ext)s")
                 addOption("--no-mtime")
@@ -112,6 +120,18 @@ class DownloadRepository(
             // Cookieは認証情報。成否にかかわらず残さない
             cookieFile?.delete()
         }
+    }
+
+    /**
+     * 中断が押されていたら、yt-dlp を起動せずに止める。
+     *
+     * [cancel] は起動済みの yt-dlp のプロセスしか止められない。起動前の段(python 環境の展開・本体の更新・
+     * Vidyard の解錠)で押された中断は、そのままだと解錠の後に yt-dlp が走って取得が始まってしまう
+     * (2026-11-10 Codex レビュー指摘)。段の切れ目でここを呼ぶ。履歴は「中断」になる
+     * ([DownloadCenter] が失敗の理由ではなく中断の印を見て決める)。
+     */
+    private fun ensureNotCancelled(isCancelled: () -> Boolean) {
+        if (isCancelled()) throw CancelledBeforeStartException()
     }
 
     /** 実行中のダウンロードを中断する。 */

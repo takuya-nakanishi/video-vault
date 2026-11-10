@@ -556,17 +556,30 @@ else
         ok "パスワードを入れて画質SDを選んだ"
         # 解錠できていれば抽出が通り、動画本体(.part)が育つ。5MB を超えたら合格として中断する。
         # エミュレータの空きが少なく(2026-11-10 は約200MB)、57分の動画を丸ごとは置けないため。
-        # 丸ごとの取得は PC の yt-dlp で確かめてある(298MB・3446秒を最後まで取得)
-        grew=""
+        # 丸ごとの取得は PC の yt-dlp で確かめてある(298MB・3446秒を最後まで取得)。
+        # 短い動画は確かめる間隔(5秒)のうちに取り終えて .part が残らないので、完成したファイルも合格にする
+        # (2026-11-10 Codex レビュー指摘。.part だけを見ると、取れているのに不合格になる)
+        grew=""; done_file=""
         for i in $(seq 1 60); do
           sleep 5
+          done_file=$(find_video); [[ -n "$done_file" ]] && break
           grew=$(adb shell "find $DL_DIR -type f -name '*.part' -size +5M 2>/dev/null" | tr -d '\r'); [[ -n "$grew" ]] && break
           has_text "失敗" && break
         done
-        if [[ -n "$grew" ]]; then
+        if [[ -n "$done_file" ]]; then
+          ok "解錠でき、動画を最後まで取得した"
+          banner_has "完了" && ok "完了の帯が出た" || ng "完了の帯が出ない"
+        elif [[ -n "$grew" ]]; then
           ok "解錠でき、動画本体の取得が5MBを超えた"
-          tap_text "中断" && ok "中断を押した" || ng "中断を押せない"
-          banner_has "中断した" && ok "中断の帯が出た" || ng "中断の帯が出ない"
+          if tap_text "中断"; then
+            ok "中断を押した"
+            banner_has "中断した" && ok "中断の帯が出た" || ng "中断の帯が出ない"
+          elif [[ -n "$(find_video)" ]]; then
+            # 中断を押す前に取り終えた(ボタンが消えていた)。取れているので合格
+            ok "中断を押す前に最後まで取得した"
+          else
+            ng "中断を押せない"
+          fi
         else
           ng "動画本体の取得が始まらない"
           dump | grep -oE 'text="[^"]*失敗[^"]{0,200}"' | head -3

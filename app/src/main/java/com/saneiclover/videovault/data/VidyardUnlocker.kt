@@ -43,13 +43,17 @@ object VidyardUnlocker {
      * ここで止めると、Vidyard 側の小さな変更で、保護されていない動画まで取れなくなる。
      *
      * 通信するので、メインスレッドから呼ばない([DownloadRepository] が IO スレッドで呼ぶ)。
+     *
+     * @param isCancelled 中断が押されたか。パスワードを送る直前に見る。Vidyard はパスワードに使用回数の上限を
+     *   付けられるので、中断したのに解錠して1回分を使ってしまうことを避ける
      */
-    fun accessTokenFor(uuid: String, password: String?): String? {
+    fun accessTokenFor(uuid: String, password: String?, isCancelled: () -> Boolean = { false }): String? {
         val type = runCatching { playerType(uuid) }.getOrNull() ?: return null
         if (type != SECURE) return null
         if (password.isNullOrEmpty()) {
             throw LockedException("パスワードで保護された動画。ダウンロードを押し直し、画質の選択でパスワードを入れる")
         }
+        if (isCancelled()) throw CancelledBeforeStartException()
         return verify(uuid, password)
     }
 

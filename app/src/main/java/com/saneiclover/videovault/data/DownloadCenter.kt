@@ -244,6 +244,8 @@ object DownloadCenter {
             quality = request.quality,
             processId = entryId,
             videoPassword = request.videoPassword,
+            // yt-dlp を起動する前(本体の更新・Vidyard の解錠)に押された中断は、ここを通して止める
+            isCancelled = { cancelRequested },
         ) { percent, line ->
             YtdlpOutput.titleFrom(line)?.let { title.set(it) }
             val next = DownloadJob(url, request.siteName, percent, line)
