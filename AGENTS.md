@@ -87,7 +87,7 @@ Android アプリに加えて、Web の仕組みと Playwright を入れる(2026
 | 根 | リポジトリ全体のもの(`AGENTS.md`・`docs/`・`llm-wiki/`・`scripts/wiki/`・`.agents/`・`.claude/`) |
 
 - 上の「位置づけと公開ルール」は Web にもそのまま及ぶ。ダウンロード系の機能を公開の URL に出さない
-- Playwright のログインの状態(storageState)・trace・動画・スクリーンショットには Cookie や入力したパスワードが入る。**git に入れない**(`.gitignore` 済み)。人に見せるときも、写り込んだ認証情報を伏せる
+- Playwright のログインの状態(storageState)・trace・動画・スクリーンショットには Cookie や入力したパスワードが入る。**git に入れない**。ログインの状態は `.auth/` の下か、名前に `storageState` を含むファイルに置き、出力は `test-results/`・`playwright-report/` に出す(どれもどの階層でも `.gitignore` 済み。それ以外の場所は無視されない)。人に見せるときも、写り込んだ認証情報を伏せる
 - 自動テストの合格判定は Web でも上の「動作確認の規律」に従う(機械が判定できる形・異常系も流す・判定は厳しく)
 - 下の「スタック」「ビルド・実行」「コード構成」は Android アプリのこと
 
@@ -149,7 +149,7 @@ res/       drawable/ic_*.xml は自作の線アイコン(24dp・2dp線)。ic_lau
 ```
 
 - **URLパターン表は `android/app/src/main/assets/site_patterns.json`**。サイトが増えてもコードは触らない
-- 判定・履歴・タイトル抽出・時刻表示のテストは `android/app/src/test/`。`./gradlew testDebugUnitTest` で実機なしに回る
+- 判定・履歴・タイトル抽出・時刻表示のテストは `android/app/src/test/`。`android/` で `./gradlew testDebugUnitTest` を叩けば実機なしに回る
 - 内蔵ブラウザは**ダウンロードを始めてもホームへ戻らない**。画質シート・進捗・結果を
   ブラウザ画面の上に重ねる。戻すとWebViewが破棄され、見ていた動画の再生が止まってページも読み直しになる
 - **表示名は「ゲットVIDEO」**(`res/values/strings.xml`)。パッケージ名 `com.saneiclover.videovault` は

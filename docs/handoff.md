@@ -161,7 +161,7 @@ adb devices | grep emulator || \
   sg kvm -c "$ANDROID_HOME/emulator/emulator @medium_phone -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect" &
 
 # 変更したら必ず: 実機へ配る前にエミュレータで通す
-android/scripts/smoke-test.sh                  # 全17シナリオ(数分かかる)
+android/scripts/smoke-test.sh                  # 引数なしは全シナリオ(数分かかる)
 android/scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ(速い)
 
 # 実機へ

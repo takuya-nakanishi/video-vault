@@ -172,7 +172,7 @@ adb shell getprop sys.boot_completed   # 1 になれば完了(実測で約80秒)
 ### Phase 6: ビルドしてインストールする
 
 ```bash
-cd ~/workspace/video-vault
+cd ~/workspace/video-vault/android
 echo "sdk.dir=$HOME/android-sdk" > local.properties
 ./gradlew assembleDebug
 android install --apks=app/build/outputs/apk/debug/app-debug.apk
@@ -283,7 +283,7 @@ adb wait-for-device && adb shell getprop sys.boot_completed   # 1 になれば�
 android emulator stop medium_phone     # または adb -s emulator-5554 emu kill
 ```
 
-入れて動かす・画面を見る:
+入れて動かす・画面を見る(`android/` で):
 
 ```bash
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ANDROID_HOME=$HOME/android-sdk ./gradlew assembleDebug

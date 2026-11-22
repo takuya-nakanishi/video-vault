@@ -22,8 +22,8 @@ dist/
 playwright-report/
 blob-report/
 test-results/
-playwright/.cache/
-playwright/.auth/
-*.storageState.json
+**/playwright/.cache/
+.auth/
+*storageState*.json
 # エージェントの作業worktree
 .claude/worktrees/
