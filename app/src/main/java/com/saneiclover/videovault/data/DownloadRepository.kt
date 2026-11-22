@@ -26,7 +26,7 @@ class CancelledBeforeStartException : IOException("中断した")
  * ファイル・PCへのMTP転送)から見える。この領域へ書くには「すべてのファイルへのアクセス」
  * (`MANAGE_EXTERNAL_STORAGE`)が要る。yt-dlpは実ファイルパスへ書くため、MediaStoreの
  * content URIではなくこの権限で直接パスに書く([hasStorageAccess] で事前に確認する)。
- * サイドロード専用アプリなのでこの権限を使ってよい(モノレポのAGENTS.md「二層構造」)。
+ * サイドロード専用アプリなのでこの権限を使ってよい(AGENTS.md「位置づけと公開ルール」)。
  */
 class DownloadRepository(
     private val context: Context,

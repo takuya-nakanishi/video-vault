@@ -6,3 +6,15 @@ local.properties
 *.keystore
 *.jks
 keystore.properties
+.env
+.env.*
+*.apk
+*.aab
+# downloaded media (never commit)
+*.mp4
+*.webm
+*.mkv
+*.m4a
+*.mp3
+# エージェントの作業worktree
+.claude/worktrees/

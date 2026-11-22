@@ -154,7 +154,7 @@ TikTokアプリの共有からURLをこのアプリへ送る運用(判定表に�
 ## 作業の始め方
 
 ```bash
-cd ~/workspace/sc-products/apps/video-vault
+cd <リポジトリの置き場>/video-vault   # 手元は ~/workspace/video-vault
 
 # エミュレータ(自動テスト用。起動していなければ)
 adb devices | grep emulator || \
@@ -221,8 +221,8 @@ adb connect 100.91.182.103:<ポート> && ./scripts/deploy-device.sh
 
 ## 参照先
 
-- 規約: `apps/video-vault/AGENTS.md`(スタック・yt-dlp運用・動作確認)、モノレポルートの `AGENTS.md`
+- 規約: 直下の `AGENTS.md`(スタック・yt-dlp運用・動作確認・リポジトリの運用)
 - 仕様: `docs/requirements.md`(要件。2026-08-21の追加要件も)、`docs/ui-ux.md`(UI/UX仕様・デザインシステム・実装状況)
 - 手順: `docs/dev-setup.md`(環境構築・エミュレータ/実機の動作確認・落とし穴)
 - ステータス・期日の正: Works の PDR
-- 設計決定の正: モノレポ直下の `docs/`(二層構造と機能境界は `docs/配布形態の二層構造と機能境界.md`)。調べたことと決定の経緯は `llm-wiki/wiki/`
+- 設計決定の正: このリポジトリの `docs/`。二層構造と機能境界は sc-products の `docs/配布形態の二層構造と機能境界.md`(2026-11-22 に sc-products の `apps/video-vault` から独立した。それまでの履歴はこのリポジトリに引き継いである)。このアプリで調べたことは `llm-wiki/wiki/`

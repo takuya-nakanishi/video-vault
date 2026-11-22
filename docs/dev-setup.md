@@ -171,7 +171,7 @@ adb shell getprop sys.boot_completed   # 1 になれば完了(実測で約80秒)
 ### Phase 6: ビルドしてインストールする
 
 ```bash
-cd ~/workspace/sc-products/apps/video-vault
+cd ~/workspace/video-vault
 echo "sdk.dir=$HOME/android-sdk" > local.properties
 ./gradlew assembleDebug
 android install --apks=app/build/outputs/apk/debug/app-debug.apk
