@@ -16,5 +16,14 @@ keystore.properties
 *.mkv
 *.m4a
 *.mp3
+# Web(Node)と Playwright の出力。ログインの状態(storageState)と trace には Cookie・入力したパスワードが入る
+node_modules/
+dist/
+playwright-report/
+blob-report/
+test-results/
+playwright/.cache/
+playwright/.auth/
+*.storageState.json
 # エージェントの作業worktree
 .claude/worktrees/
