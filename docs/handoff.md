@@ -135,7 +135,8 @@ TikTokアプリの共有からURLをこのアプリへ送る運用(判定表に�
 出ないサイトがあれば `android/scripts/webview-eval.py <serial> <url> "document.querySelectorAll('video,iframe').length"`
 で、動画がDOMに無い(canvas/Shadow DOM/クロスオリジンiframe)のか、注入が失敗しているのかを切り分ける。
 - TikTokは判定表(`site_patterns.json`)に `downloadable: true` で載っているので、動画URLを貼れば直接走る
-- NewsPicksは判定表に無い(yt-dlpに専用extractorが無い)。内蔵ブラウザでログイン→「このページをダウンロード」の
+- NewsPicksは判定表に無い。yt-dlpの専用extractor(`NewsPicksIE`)は `newspicks.com/movie-series/<id>` の形だけが対象で、
+  それ以外のページは汎用の抽出に落ちる(2026-11-23 yt-dlp master の `yt_dlp/extractor/newspicks.py` で確認)。内蔵ブラウザでログイン→「このページをダウンロード」の
   Cookie導線で試す。通らなければ `downloadable: false` で登録して「対象外」と明示する
 
 ### 5. 会員制サイト(GFS)のDRM有無調査
