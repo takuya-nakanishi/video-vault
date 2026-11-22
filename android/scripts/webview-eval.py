@@ -4,8 +4,8 @@
 uiautomatorはWebView内部のテキストを拾えないので、ページ内の状態(動画バッジの数など)は
 これで見る。依存を足さないため生WebSocketでCDPの Runtime.evaluate を1回だけ投げる。
 
-使い方: scripts/webview-eval.py <adbシリアル> <URLの部分一致> <JS式>
-  例: scripts/webview-eval.py emulator-5554 youtube.com "document.querySelectorAll('.vv-badge').length"
+使い方: android/scripts/webview-eval.py <adbシリアル> <URLの部分一致> <JS式>
+  例: android/scripts/webview-eval.py emulator-5554 youtube.com "document.querySelectorAll('.vv-badge').length"
 終了コード: 0=評価できた / 1=アプリ未起動・該当ページ無し・接続失敗
 """
 import base64, json, os, socket, struct, subprocess, sys, time, urllib.request

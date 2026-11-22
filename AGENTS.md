@@ -78,7 +78,13 @@
 
 ## Web と Playwright(これから入れる)
 
-Android アプリに加えて、Web の仕組みと Playwright を入れる(2026-11-22 本人)。何に使うかと置き場は、入れるときに決めてこの節を書き直す。
+Android アプリに加えて、Web の仕組みと Playwright を入れる(2026-11-22 本人)。何に使うかは、入れるときに決めてこの節を書き直す。
+
+| 置き場 | 中身 |
+|---|---|
+| `android/` | Android アプリ(Gradle 一式。`android/scripts/` は煙試験・実機への配布など Android の道具) |
+| `web/` | Web と Playwright(まだ無い。入れるときに作る) |
+| 根 | リポジトリ全体のもの(`AGENTS.md`・`docs/`・`llm-wiki/`・`scripts/wiki/`・`.agents/`・`.claude/`) |
 
 - 上の「位置づけと公開ルール」は Web にもそのまま及ぶ。ダウンロード系の機能を公開の URL に出さない
 - Playwright のログインの状態(storageState)・trace・動画・スクリーンショットには Cookie や入力したパスワードが入る。**git に入れない**(`.gitignore` 済み)。人に見せるときも、写り込んだ認証情報を伏せる
@@ -94,7 +100,7 @@ Android アプリに加えて、Web の仕組みと Playwright を入れる(2026
   youtubedl-androidはpython・ffmpegのx86_64バイナリも同梱しており、
   **エミュレータでもyt-dlpは実際に起動する**(2026-08-17実測)。ただし出荷先は実機arm64なので、
   最終確認は実機で行う
-- 依存バージョンは `gradle/libs.versions.toml` に集約。**Gradle・AGP・Kotlin・Composeは今は上げない**
+- 依存バージョンは `android/gradle/libs.versions.toml` に集約。**Gradle・AGP・Kotlin・Composeは今は上げない**
   (4点セットで動かす。`docs/dev-setup.md`「バージョン方針」)
 - **youtubedl-androidだけは例外的に上げる**。YouTube側の変化に追随する必要があり、
   古いままだとダウンロードが動かなくなる。現行 0.18.1(QuickJS同梱。後述)
@@ -104,9 +110,10 @@ Android アプリに加えて、Web の仕組みと Playwright を入れる(2026
 環境構築は実行・検証済み。手順とハマりどころは **`docs/dev-setup.md` が正**(このファイルは要点のみ)。
 
 - **WSL2の中で完結する**。Windows側にはJDKもAndroid Studioも入れない
-- CLIから直接ビルドできる。Android Studioで開く場合もリポジトリの根を開く
+- CLIから直接ビルドできる。**Gradle のコマンドは `android/` で走らせる**。Android Studioで開く場合も `android/` を開く
 
 ```bash
+cd android
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ANDROID_HOME=$HOME/android-sdk \
   ./gradlew testDebugUnitTest assembleDebug
 android install --apks=app/build/outputs/apk/debug/app-debug.apk
@@ -116,7 +123,7 @@ android install --apks=app/build/outputs/apk/debug/app-debug.apk
 - SDK管理は `android sdk` / AVDは `android emulator`(`sdkmanager` は非推奨・削除済み)
 - エミュレータ起動は `emulator` バイナリを直接呼ぶ(`android emulator start` はウィンドウ表示前提)
 - 実機デバッグはワイヤレスデバッグ(`adb pair` → `adb connect`)。USB転送(usbipd-win)は不要
-- releaseビルドの署名: 初回リリース時に `keytool -genkeypair -v -keystore videovault-release.jks -alias videovault -keyalg RSA -keysize 4096 -validity 10950` で生成。keystoreとパスワードは**gitに入れない**(gitignore済み)。実体は端末ローカル+Google Driveバックアップ。`keystore.properties` から読む方式で `app/build.gradle.kts` に後日組み込む
+- releaseビルドの署名: 初回リリース時に `keytool -genkeypair -v -keystore videovault-release.jks -alias videovault -keyalg RSA -keysize 4096 -validity 10950` で生成。keystoreとパスワードは**gitに入れない**(gitignore済み)。実体は端末ローカル+Google Driveバックアップ。`keystore.properties` から読む方式で `android/app/build.gradle.kts` に後日組み込む
 
 ## コード構成
 
@@ -141,8 +148,8 @@ ui/        Compose。画面は状態を持たず、状態は VideoVaultViewModel
 res/       drawable/ic_*.xml は自作の線アイコン(24dp・2dp線)。ic_launcher_* がアプリアイコン(ベクタのみ)
 ```
 
-- **URLパターン表は `app/src/main/assets/site_patterns.json`**。サイトが増えてもコードは触らない
-- 判定・履歴・タイトル抽出・時刻表示のテストは `app/src/test/`。`./gradlew testDebugUnitTest` で実機なしに回る
+- **URLパターン表は `android/app/src/main/assets/site_patterns.json`**。サイトが増えてもコードは触らない
+- 判定・履歴・タイトル抽出・時刻表示のテストは `android/app/src/test/`。`./gradlew testDebugUnitTest` で実機なしに回る
 - 内蔵ブラウザは**ダウンロードを始めてもホームへ戻らない**。画質シート・進捗・結果を
   ブラウザ画面の上に重ねる。戻すとWebViewが破棄され、見ていた動画の再生が止まってページも読み直しになる
 - **表示名は「ゲットVIDEO」**(`res/values/strings.xml`)。パッケージ名 `com.saneiclover.videovault` は
@@ -232,13 +239,13 @@ Vidyard(企業向けの動画配信)の**パスワード付きの動画は、yt-
 uiautomatorのビューツリー(テキスト)で判定するので、エージェントが単独で回せる。
 
 ```bash
-scripts/smoke-test.sh                  # 全24シナリオ・83チェック(正常系・異常系・ブックマーク・履歴・永続化・実ダウンロード・動画バッジ・Vidyard)。パスワード付きの Vidyard の2シナリオは別(下)
-scripts/webview-eval.py <serial> <url> <js>  # 内蔵ブラウザの中でJSを評価(debug限定。uiautomatorはWebView内を見られない)
-scripts/smoke-test.sh --only-download  # 実ダウンロードとその履歴だけ(原因追跡の反復用)
-scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ
-scripts/smoke-test.sh --only-vidyard   # Vidyard だけ。パスワード付きは VIDYARD_SECURE_URL・VIDYARD_SECURE_PASSWORD を渡したときだけ走る(値はリポジトリに書かない)
+android/scripts/smoke-test.sh                  # 全24シナリオ・83チェック(正常系・異常系・ブックマーク・履歴・永続化・実ダウンロード・動画バッジ・Vidyard)。パスワード付きの Vidyard の2シナリオは別(下)
+android/scripts/webview-eval.py <serial> <url> <js>  # 内蔵ブラウザの中でJSを評価(debug限定。uiautomatorはWebView内を見られない)
+android/scripts/smoke-test.sh --only-download  # 実ダウンロードとその履歴だけ(原因追跡の反復用)
+android/scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ
+android/scripts/smoke-test.sh --only-vidyard   # Vidyard だけ。パスワード付きは VIDYARD_SECURE_URL・VIDYARD_SECURE_PASSWORD を渡したときだけ走る(値はリポジトリに書かない)
 adb connect 100.91.182.103:38705  # 実機へadb接続(別LANは先にMTUクランプ。docs/dev-setup.md)
-scripts/deploy-device.sh               # ビルド→実機インストール→起動
+android/scripts/deploy-device.sh               # ビルド→実機インストール→起動
 ```
 
 - 煙試験はエミュレータ限定(実機を誤って操作しない保険を入れてある)

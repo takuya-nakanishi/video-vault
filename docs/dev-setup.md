@@ -1,6 +1,7 @@
 # video-vault 開発環境構築手順(2026-08-16・実行済み)
 
 Android開発が初めての人向けに、**このマシン(Surface / WSL2)で実際に実行して検証した**手順。
+Android の Gradle 一式はリポジトリの `android/` にある。下の `./gradlew`・`local.properties`・`android install --apks=app/...` は `android/` で走らせる。
 
 ## ✅ 完了状態
 
@@ -221,7 +222,7 @@ Layoutlibを使ってIDE内にレンダリングするため、**WSL2の中で�
 - ウィンドウ付きエミュレータは封印はしないが、ネスト仮想化+ソフトウェア描画+WSLg転送の
   三重の遅さがあり実用に向かない(2026-08-18実測)
 
-ビルド→実機インストール→起動は `scripts/deploy-device.sh` に1コマンド化してある。
+ビルド→実機インストール→起動は `android/scripts/deploy-device.sh` に1コマンド化してある。
 
 ### どちらで何を確かめるか
 

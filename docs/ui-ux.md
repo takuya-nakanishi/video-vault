@@ -224,7 +224,7 @@ Cookieを渡す方式なら、サイト対応の追随は yt-dlp 本体に任せ
 - **保存済みファイル**: 一覧・合計容量・削除(確認あり)
 - **Vidyard**(2026-11-10): 判定表に入れ、URL を貼るとダウンロードが第一候補になる。内蔵ブラウザでは
   埋め込みのプレイヤー(`play.vidyard.com` の iframe)にバッジが付く。パスワード付きの動画は画質シートの欄で受け取って解錠する
-- 判定表は `app/src/main/assets/site_patterns.json`。判定・履歴・タイトル抽出・時刻表示・Vidyard の URL の
+- 判定表は `android/app/src/main/assets/site_patterns.json`。判定・履歴・タイトル抽出・時刻表示・Vidyard の URL の
   ロジックは単体テスト35件で固定
 
 ### 仕様からの逸脱と、その理由

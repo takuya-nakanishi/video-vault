@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ビルド→接続中のデバイスへインストール→起動 を1コマンドで行う。
 # 使い方:
-#   scripts/deploy-device.sh                # デバイスが1台だけ繋がっているとき
-#   scripts/deploy-device.sh 192.168.10.xx:PORT   # 複数台繋がっているときはシリアルを指定
+#   android/scripts/deploy-device.sh                # デバイスが1台だけ繋がっているとき
+#   android/scripts/deploy-device.sh 192.168.10.xx:PORT   # 複数台繋がっているときはシリアルを指定
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

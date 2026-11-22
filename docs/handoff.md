@@ -20,7 +20,7 @@ yt-dlp の Vidyard 抽出器がパスワードを扱えず、`KeyError('chapters
   (前からの穴。段の切れ目で中断を確かめるようにした)/ シナリオ24が短い動画で偽の不合格になり得た / 仕様の書き方で
   パスワード欄を「人間の依頼」としていた(Claude の判断と書き分けた)
 - **実機では未確認**(次のアクション1)
-- 試した実物の URL とパスワードは**リポジトリに書いていない**。人間が持っている。煙試験は環境変数で渡す(`scripts/smoke-test.sh` の冒頭)
+- 試した実物の URL とパスワードは**リポジトリに書いていない**。人間が持っている。煙試験は環境変数で渡す(`android/scripts/smoke-test.sh` の冒頭)
 
 ## その前の到達点: 画面を閉じてもダウンロードが続く(2026-08-25)
 
@@ -30,7 +30,7 @@ yt-dlp の Vidyard 抽出器がパスワードを扱えず、`KeyError('chapters
 それまでは(a)バッジを押すとホームへ飛んでWebViewごと破棄され再生が止まる (b)画面を離れると
 ダウンロードごと死ぬ、の2つが重なって不可能だった。両方を潰してある。
 
-**エミュレータ上で煙試験20シナリオ・72チェックすべて合格**(`scripts/smoke-test.sh`)。単体テスト30件合格。
+**エミュレータ上で煙試験20シナリオ・72チェックすべて合格**(`android/scripts/smoke-test.sh`)。単体テスト30件合格。
 
 - 構造の要点は `../AGENTS.md`「ダウンロードの実行」が正。**実行状態と履歴の持ち主を
   ViewModelから `DownloadCenter`(プロセス寿命のobject)へ移した**のが中核
@@ -62,7 +62,7 @@ yt-dlp の Vidyard 抽出器がパスワードを扱えず、`KeyError('chapters
 
 実機は `adb devices` に `adb-56251FDCQ001BB-...` として**接続済みのことがある**(2026-08-21はmDNS経由で見えていた)。
 見えていなければ、人間に Pixel の 設定 > システム > 開発者向けオプション > ワイヤレスデバッグ の
-ポート番号を聞いて `adb connect 100.91.182.103:<ポート>`(別LANは先にMTUクランプ。`docs/dev-setup.md`)→ `scripts/deploy-device.sh`。
+ポート番号を聞いて `adb connect 100.91.182.103:<ポート>`(別LANは先にMTUクランプ。`docs/dev-setup.md`)→ `android/scripts/deploy-device.sh`。
 
 **ポート番号が無くても入れられる**: 2026-11-10 に `9753795` の debug 版を Google ドライブの `20-Apps/ゲットVIDEO` に置いた
 (`ゲットVIDEO-0.1.0-debug-20261110-9753795.apk`。置き方は `../AGENTS.md`「配布方法」)。実機のドライブのアプリから開いて入れる。
@@ -122,7 +122,7 @@ WebViewの高さが WRAP_CONTENT で CSS の `vh`/`height:100%` が0に潰れて
 TikTokアプリの共有からURLをこのアプリへ送る運用(判定表にあるので直接DLが走る)。
 
 **内蔵ブラウザの調査は Logcat の `VideoVaultBrowser`**(`adb logcat -s VideoVaultBrowser:V`)と
-**`scripts/webview-eval.py`**(ページ内でJSを評価)。uiautomatorはWebView内部のテキストを拾えないので、
+**`android/scripts/webview-eval.py`**(ページ内でJSを評価)。uiautomatorはWebView内部のテキストを拾えないので、
 中の状態はDevTools(CDP)で見る(debugビルドで有効)。
 
 ### 4b. 動画バッジ(2026-08-21・人間の依頼で導入)
@@ -132,7 +132,7 @@ TikTokアプリの共有からURLをこのアプリへ送る運用(判定表に�
 予備は下部バー「⋮」の「このページのURLでダウンロード」。
 エミュレータのYouTube視聴ページで**注入→右下に表示→タップ→`Download/videos` に保存**まで確認済み
 (煙試験シナリオ18)。**実機でNewsPicks・X・TikTokのページにバッジが出るかは未確認**。
-出ないサイトがあれば `scripts/webview-eval.py <serial> <url> "document.querySelectorAll('video,iframe').length"`
+出ないサイトがあれば `android/scripts/webview-eval.py <serial> <url> "document.querySelectorAll('video,iframe').length"`
 で、動画がDOMに無い(canvas/Shadow DOM/クロスオリジンiframe)のか、注入が失敗しているのかを切り分ける。
 - TikTokは判定表(`site_patterns.json`)に `downloadable: true` で載っているので、動画URLを貼れば直接走る
 - NewsPicksは判定表に無い(yt-dlpに専用extractorが無い)。内蔵ブラウザでログイン→「このページをダウンロード」の
@@ -141,7 +141,7 @@ TikTokアプリの共有からURLをこのアプリへ送る運用(判定表に�
 ### 5. 会員制サイト(GFS)のDRM有無調査
 
 **アプリを触る前にPC側のyt-dlpで検証する**。DRM(Widevine)なら対象外として
-`app/src/main/assets/site_patterns.json` に `downloadable: false` で登録して終わり。
+`android/app/src/main/assets/site_patterns.json` に `downloadable: false` で登録して終わり。
 
 ### 6. 次版の機能(優先度はこの順)
 
@@ -154,18 +154,18 @@ TikTokアプリの共有からURLをこのアプリへ送る運用(判定表に�
 ## 作業の始め方
 
 ```bash
-cd <リポジトリの置き場>/video-vault   # 手元は ~/workspace/video-vault
+cd <リポジトリの置き場>/video-vault   # 手元は ~/workspace/video-vault。Android の Gradle 一式は android/ にある
 
 # エミュレータ(自動テスト用。起動していなければ)
 adb devices | grep emulator || \
   sg kvm -c "$ANDROID_HOME/emulator/emulator @medium_phone -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect" &
 
 # 変更したら必ず: 実機へ配る前にエミュレータで通す
-./scripts/smoke-test.sh                  # 全17シナリオ(数分かかる)
-./scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ(速い)
+android/scripts/smoke-test.sh                  # 全17シナリオ(数分かかる)
+android/scripts/smoke-test.sh --skip-download  # ネットワークを使わない範囲だけ(速い)
 
 # 実機へ
-adb connect 100.91.182.103:<ポート> && ./scripts/deploy-device.sh
+adb connect 100.91.182.103:<ポート> && android/scripts/deploy-device.sh
 ```
 
 - **非対話シェルでは `~/.bashrc` が読まれない**。`JAVA_HOME` と `ANDROID_HOME` を明示的に渡すか、
@@ -206,7 +206,7 @@ adb connect 100.91.182.103:<ポート> && ./scripts/deploy-device.sh
    とCodexに指摘された(2026-08-21)。起動時ロードは同期、保存は `persist` dispatcher経由にしてある
 9. **煙試験はビルド失敗で即終了する**。以前は `| tail -2` で終了コードが消え、古いAPKで合格し得た。
    ボタンを文言で特定するので、**同じ画面に同じ文言のボタンを2つ置かない**(ダイアログの確定は「保存」「削除」「消去」)
-   **呼び出す側も同じ罠を踏む**。`./scripts/smoke-test.sh | tail -60` と繋ぐと終了コードが tail のものになり、
+   **呼び出す側も同じ罠を踏む**。`android/scripts/smoke-test.sh | tail -60` と繋ぐと終了コードが tail のものになり、
    失敗2件でも `exit 0` に見える(2026-08-21に実際に踏んだ)。ログはリダイレクトして後から読む
 10. **煙試験の判定は「アプリのUIへ反映される時間」を待つ**。JSがページ内にバッジを出してから
    下部バーの件数へ反映されるまで数秒かかる(実測: バッジ5秒 → 下部バー10秒)。検出直後に1回だけ

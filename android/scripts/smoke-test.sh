@@ -3,14 +3,14 @@
 # 実機へ配る前にこれを通す。UIの検証はスクリーンショットではなく
 # uiautomatorのビューツリー(テキスト)で行うので、人の目が要らない。
 #
-# 使い方: scripts/smoke-test.sh [--skip-download | --only-download | --only-vidyard]
+# 使い方: android/scripts/smoke-test.sh [--skip-download | --only-download | --only-vidyard]
 #   --skip-download を付けると実ダウンロード(ネットワーク・時間がかかる)を飛ばす
 #   --only-download は実ダウンロードとその後の確認だけ(原因追跡の反復用)
 #   --only-vidyard は Vidyard のシナリオ(20〜24)だけ
 #
 # パスワード付きの Vidyard 動画のシナリオ(23・24)は、URL とパスワードを環境変数で渡したときだけ走る。
 # **どちらもリポジトリに書かない**(他社の保護された動画で、パスワードは認証情報)。
-#   VIDYARD_SECURE_URL=<共有ページのURL> VIDYARD_SECURE_PASSWORD=<パスワード> scripts/smoke-test.sh --only-vidyard
+#   VIDYARD_SECURE_URL=<共有ページのURL> VIDYARD_SECURE_PASSWORD=<パスワード> android/scripts/smoke-test.sh --only-vidyard
 #
 # 判定の流儀: ok/ng で数え、最後に失敗0で合格。`set -e` にしないのは、1つ落ちても残りの
 # シナリオを流して全体像を出すため。**ただしビルド・インストールの失敗は即終了する**
