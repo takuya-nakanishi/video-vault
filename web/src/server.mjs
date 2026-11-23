@@ -163,7 +163,9 @@ export function createApp(config, overrides = {}) {
     res.writeHead(status, {
       ...extra,
       'Content-Type': type,
-      'Cache-Control': 'no-store',
+      // no-transform: 途中(Cloudflare)に、ページを書き換えさせない。入口は解析用のスクリプトを HTML へ差し込もうとする
+      // (2026-11-24 に外から開いて見つけた。CSP が止めていたが、差し込み自体をさせない)
+      'Cache-Control': 'no-store, no-transform',
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
       'Referrer-Policy': 'no-referrer',

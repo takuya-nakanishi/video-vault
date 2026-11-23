@@ -58,6 +58,7 @@ test('画面は開け、合言葉が埋まっていて、枠への埋め込み�
   assert.ok(r.text.includes(app.token), '合言葉が HTML に入っていない');
   assert.ok(!r.text.includes('__VV_TOKEN__'), '置き換え前の印が残っている');
   assert.equal(r.headers['x-frame-options'], 'DENY');
+  assert.equal(r.headers['cache-control'], 'no-store, no-transform', '途中でページを書き換えさせない指定が無い');
   assert.match(r.headers['content-security-policy'], /frame-ancestors 'none'/);
   for (const p of ['/app.js', '/style.css']) assert.equal((await request({ pathname: p })).status, 200, p);
 });

@@ -123,6 +123,7 @@ web/deploy/cloudflare-tunnel.py ytdlp.sanei-clover.com --remove   # DNS のレ�
 - 同じ相手が 5 回まちがえると、15 分のあいだ受け付けない(相手は、トンネルが付ける `CF-Connecting-IP` で見分ける)。
   自分が締め出されたら、15 分待つか、`systemctl --user restart video-vault-web`
 - 公開用の名前に http で来た要求は、認証を求める前に https へ回す
+- 応答に `no-transform` を付け、途中(Cloudflare)にページを書き換えさせない。付けないと、入口が解析用のスクリプトを HTML へ差し込もうとする
 - **パスワードを変える**: `~/.config/video-vault/web.env` を書き換えて、`systemctl --user restart video-vault-web`
 
 ### 外から確かめたこと(2026-11-24)
@@ -136,6 +137,7 @@ web/deploy/cloudflare-tunnel.py ytdlp.sanei-clover.com --remove   # DNS のレ�
 | 誤りを 5 回のあと、正しいパスワード | 429(この PC の中からは 200) |
 | 外の URL から YouTube の公開の動画を 1 本渡す | 成功。結合された 1 本が Surface の保存先にできた。進み具合の通知も届いた |
 | 待ち受けているアドレス | `127.0.0.1:8787` だけ |
+| スマホの大きさの実物のブラウザで開く | 認証なしは 401。認証つきで画面が出て、候補が動く。画面のエラーも横スクロールも無い |
 
 ### 外から使うときに足りないもの
 
