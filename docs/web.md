@@ -54,6 +54,37 @@ Chrome にしたいときは `VIDEO_VAULT_BROWSER_CHANNEL=chrome`。
 WSL・Linux でも同じ手順で動く。ログイン用のブラウザは Playwright の Chromium になるので、`npx playwright install chromium` で入れる
 (窓を出すには WSLg などの画面が要る)。
 
+## Surface で常駐させる(WSL)
+
+```bash
+web/deploy/install-service.sh            # 入れて起動する(入っていれば入れ直す)
+web/deploy/install-service.sh --remove   # 止めて外す
+systemctl --user status video-vault-web  # 状態
+journalctl --user -u video-vault-web -n 50   # ログ
+```
+
+- systemd の利用者ごとのサービス `video-vault-web` として動く。待ち受けるのは `127.0.0.1:8787` のまま。Surface の Windows のブラウザからも同じ URL で開ける
+- コードを変えたら `systemctl --user restart video-vault-web` で入れ直す
+- 2026-11-23 に SC02-SURFACE へ入れた。サービスのまま YouTube の公開の動画を 1 本渡し、結合された 1 本が Windows のダウンロードフォルダの `videos` にできることを確かめた
+- **確かめていないこと**: Claude Code などのセッションを全部閉じたあとも WSL が動き続けるか(WSL は使われていないと止まることがある)。
+  ログイン用のブラウザの窓が、サービスから Surface の画面(WSLg)に出るか
+
+## 外から使うための備え(公開は、まだしていない)
+
+外(スマホやほかの PC)から使うには、Surface の `127.0.0.1:8787` へ届く道(トンネル)と、認証が要る。アプリの側の備えだけ入れてある。
+
+| 環境変数 | 中身 |
+|---|---|
+| `VIDEO_VAULT_PUBLIC_HOST` | 外から届く名前(ホスト名だけ)。この名前の Host と、`https://` のこの名前の Origin を受け付ける |
+| `VIDEO_VAULT_BASIC_USER`・`VIDEO_VAULT_BASIC_PASSWORD` | Basic 認証。パスワードは 16 文字以上 |
+
+- **公開用のホスト名は、Basic 認証と揃っているときだけ設定できる**。片方だけ・短いパスワードでは起動しない(認証なしで外へ出る設定の誤りを、起動の時点で止める)
+- Basic 認証を設定すると、画面も API も、認証を通るまで何も返さない(この PC の中からでも要る)。認証を通ったあとも、Host・合言葉・Origin の確かめは残る
+- 同じ相手が 5 回まちがえると、15 分のあいだ受け付けない(相手は、トンネルが付ける `CF-Connecting-IP` で見分ける)
+- 常駐のサービスでは、`~/.config/video-vault/web.env` に書く(パスワードが入るので、リポジトリには置かない)
+- **外から使うときに足りないもの**: ①ログイン用のブラウザの窓は Surface の画面に出る。外からは見えず、ログインの操作ができない
+  ②取ったファイルは Surface に保存される。外から取り出す口は無い
+
 ## 使い方
 
 - **URL を貼る**: 画面の入力欄に貼ると、候補が出る。動画サイトの URL は「ダウンロード」、そのほかの URL は「ブラウザで開く」と「ダウンロードを試す」

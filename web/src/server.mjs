@@ -40,6 +40,16 @@ function safeEqual(a, b) {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
+/** 長さの違いを時間から読ませないよう、ハッシュにしてから比べる */
+function secretEqual(a, b) {
+  const h = (v) => crypto.createHash('sha256').update(String(v)).digest();
+  return crypto.timingSafeEqual(h(a), h(b));
+}
+
+/** 同じ相手が Basic 認証をこの回数まちがえたら、しばらく受け付けない */
+export const BASIC_MAX_FAILURES = 5;
+export const BASIC_LOCK_MS = 15 * 60 * 1000;
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -148,9 +158,10 @@ export function createApp(config, overrides = {}) {
   center.on('change', push);
   browser.on('change', push);
 
-  function send(res, status, body, type = 'application/json; charset=utf-8') {
+  function send(res, status, body, type = 'application/json; charset=utf-8', extra = {}) {
     const text = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
     res.writeHead(status, {
+      ...extra,
       'Content-Type': type,
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
@@ -161,13 +172,59 @@ export function createApp(config, overrides = {}) {
     res.end(text);
   }
 
-  const allowedHosts = () => new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
-  const allowedOrigins = () => new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+  // 公開用のホスト名は、設定にあるときだけ足す(https でだけ使う。待ち受けるアドレスは 127.0.0.1 のまま)
+  const publicHost = config.publicHost ?? null;
+  const allowedHosts = () => new Set([`127.0.0.1:${port}`, `localhost:${port}`, ...(publicHost ? [publicHost] : [])]);
+  const allowedOrigins = () =>
+    new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, ...(publicHost ? [`https://${publicHost}`] : [])]);
+
+  const now = overrides.now ?? Date.now;
+  const basic = config.basicUser ? { user: config.basicUser, password: config.basicPassword } : null;
+  /** Basic 認証をまちがえた相手 → { count, until } */
+  const failures = new Map();
+
+  /**
+   * Basic 認証。通れば null、通らなければ返した応答の状態コード。
+   * 相手は、トンネル(Cloudflare)が付ける CF-Connecting-IP で見分ける。このサーバは 127.0.0.1 でしか待ち受けないので、
+   * つなげるのはこの PC の中のプロセスだけで、そのヘッダを外の人が直接は偽れない。
+   */
+  function rejectByBasic(req, res) {
+    if (!basic) return null;
+    const who = String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '');
+    const f = failures.get(who);
+    if (f && f.until > now()) {
+      send(res, 429, { error: 'まちがいが続いたので、しばらく受け付けない' }, undefined, {
+        'Retry-After': String(Math.ceil((f.until - now()) / 1000)),
+      });
+      return 429;
+    }
+    let ok = false;
+    const m = /^Basic ([A-Za-z0-9+/=]+)$/.exec(String(req.headers.authorization ?? ''));
+    if (m) {
+      const text = Buffer.from(m[1], 'base64').toString('utf8');
+      const i = text.indexOf(':');
+      // 利用者名とパスワードの両方を必ず比べる(片方で打ち切ると、どちらが違うかを時間から読める)
+      const userOk = secretEqual(i < 0 ? '' : text.slice(0, i), basic.user);
+      const passOk = secretEqual(i < 0 ? '' : text.slice(i + 1), basic.password);
+      ok = i >= 0 && userOk && passOk;
+    }
+    if (ok) {
+      failures.delete(who);
+      return null;
+    }
+    if (failures.size > 5000) failures.clear(); // 覚えすぎない
+    const count = (f && f.until <= now() && f.count >= BASIC_MAX_FAILURES ? 0 : (f?.count ?? 0)) + 1;
+    failures.set(who, { count, until: count >= BASIC_MAX_FAILURES ? now() + BASIC_LOCK_MS : 0 });
+    send(res, 401, { error: '認証が要る' }, undefined, { 'WWW-Authenticate': 'Basic realm="video-vault", charset="UTF-8"' });
+    return 401;
+  }
 
   async function handle(req, res) {
     if (!allowedHosts().has(String(req.headers.host ?? '').toLowerCase())) {
       return send(res, 403, { error: 'この名前では受け付けない' });
     }
+    // 画面も API も、Basic 認証を通ってからでないと何も返さない(合言葉の入った HTML も返さない)
+    if (rejectByBasic(req, res) !== null) return;
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === 'GET' && Object.hasOwn(STATIC, url.pathname)) {
