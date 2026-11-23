@@ -23,7 +23,7 @@ flowchart LR
 - 画面から URL を渡すか、ブラウザの動画の枠のバッジを押すと、順番待ちに入る(`web/src/server.mjs`・`web/src/loginBrowser.mjs`)
 - 走らせるのは 1 件ずつ。2 件目からは順番待ちに積む(`web/src/downloadCenter.mjs`。Android は 2 件目を断る)
 - Cookie は、ブラウザから読んで一時ファイルにし、yt-dlp に `--cookies` で渡して、終わったら消す(`web/src/cookieFile.mjs`)
-- 図の対象外: fire の取り込みへのつなぎ方、ゲットVIDEO(Android)から URL と Cookie を送る口、Surface に常駐させて画面を映す作り。どれもまだ無い
+- 図の対象外: 外からの道(下の「外から使う」)。fire の取り込みへのつなぎ方、ゲットVIDEO(Android)から URL と Cookie を送る口、外からログインの操作をする作りは、まだ無い
 
 ## 入れ方(Windows)
 
@@ -58,7 +58,7 @@ WSL・Linux でも同じ手順で動く。ログイン用のブラウザは Play
 
 ```bash
 web/deploy/install-service.sh            # 入れて起動する(入っていれば入れ直す)
-web/deploy/install-service.sh --remove   # 止めて外す
+web/deploy/install-service.sh --remove   # 止めて外す(外へつなぐ口も一緒に止まる)
 systemctl --user status video-vault-web  # 状態
 journalctl --user -u video-vault-web -n 50   # ログ
 ```
@@ -69,21 +69,79 @@ journalctl --user -u video-vault-web -n 50   # ログ
 - **確かめていないこと**: Claude Code などのセッションを全部閉じたあとも WSL が動き続けるか(WSL は使われていないと止まることがある)。
   ログイン用のブラウザの窓が、サービスから Surface の画面(WSLg)に出るか
 
-## 外から使うための備え(公開は、まだしていない)
+## 外から使う(`https://ytdlp.sanei-clover.com`)
 
-外(スマホやほかの PC)から使うには、Surface の `127.0.0.1:8787` へ届く道(トンネル)と、認証が要る。アプリの側の備えだけ入れてある。
+2026-11-24 に公開した(本人の決定)。Surface で動くアプリへ、Cloudflare Tunnel で届ける。
+
+```mermaid
+flowchart LR
+  U["スマホ・ほかの PC"]
+  CF["Cloudflare<br/>(入口。認証なし)"]
+  T["cloudflared<br/>(video-vault-tunnel)"]
+  A["Basic 認証<br/>+ Host・合言葉・Origin"]
+  APP["アプリ<br/>(127.0.0.1:8787。video-vault-web)"]
+  U -->|"https"| CF -->|"トンネル video-vault"| T --> A --> APP
+```
+
+- 外のブラウザは Cloudflare へ https でつなぐ。DNS は `ytdlp` の CNAME(プロキシ ON)で、トンネル `video-vault` を指す(`web/deploy/cloudflare-tunnel.py`)
+- Surface の中の `cloudflared`(サービス `video-vault-tunnel`)が、Cloudflare からの要求を `http://127.0.0.1:8787` へ渡す(`web/deploy/install-service.sh --tunnel`)
+- アプリは Basic 認証を通るまで何も返さない。通ったあとも Host・合言葉・Origin を確かめる(`web/src/server.mjs`)
+- 図の対象外: ログイン用のブラウザと保存先(上の図)。どちらも Surface の中にあり、外からは届かない
+
+### 作り方(やり直すとき)
+
+```bash
+# 1. Basic 認証と公開用の名前を ~/.config/video-vault/web.env に書く(持ち主だけが読める)
+#    VIDEO_VAULT_PUBLIC_HOST=ytdlp.sanei-clover.com
+#    VIDEO_VAULT_BASIC_USER=<利用者名>
+#    VIDEO_VAULT_BASIC_PASSWORD=<16 文字以上>
+web/deploy/install-service.sh                             # 2. アプリを入れ直す(認証なしは 401 になる)
+web/deploy/cloudflare-tunnel.py ytdlp.sanei-clover.com    # 3. トンネル・経路・CNAME を作り、トークンを書く
+web/deploy/install-service.sh --tunnel                    # 4. cloudflared を起動する
+```
+
+- 3 は、1 が済んでいないと止まる。4 は、アプリが認証を求めていないと止まる(認証なしで外へつながない)
+- Cloudflare の API のトークンは、agent-base の `.env` から名前で読む(`SC_CLOUDFLARE_SANEI_CLOVER_COM_API_TOKEN` など)
+- `cloudflared` は `~/.local/bin/cloudflared`(2026.9.1。Works と同じ版)。GitHub の配布物を置いた
+
+### やめるとき
+
+```bash
+web/deploy/install-service.sh --remove-tunnel                     # 外から届かなくなる(すぐ効く)
+web/deploy/cloudflare-tunnel.py ytdlp.sanei-clover.com --remove   # DNS のレコードとトンネルを消す
+```
+
+### 守り
 
 | 環境変数 | 中身 |
 |---|---|
 | `VIDEO_VAULT_PUBLIC_HOST` | 外から届く名前(ホスト名だけ)。この名前の Host と、`https://` のこの名前の Origin を受け付ける |
 | `VIDEO_VAULT_BASIC_USER`・`VIDEO_VAULT_BASIC_PASSWORD` | Basic 認証。パスワードは 16 文字以上 |
 
-- **公開用のホスト名は、Basic 認証と揃っているときだけ設定できる**。片方だけ・短いパスワードでは起動しない(認証なしで外へ出る設定の誤りを、起動の時点で止める)
-- Basic 認証を設定すると、画面も API も、認証を通るまで何も返さない(この PC の中からでも要る)。認証を通ったあとも、Host・合言葉・Origin の確かめは残る
-- 同じ相手が 5 回まちがえると、15 分のあいだ受け付けない(相手は、トンネルが付ける `CF-Connecting-IP` で見分ける)
-- 常駐のサービスでは、`~/.config/video-vault/web.env` に書く(パスワードが入るので、リポジトリには置かない)
-- **外から使うときに足りないもの**: ①ログイン用のブラウザの窓は Surface の画面に出る。外からは見えず、ログインの操作ができない
-  ②取ったファイルは Surface に保存される。外から取り出す口は無い
+- **公開用のホスト名は、Basic 認証と揃っているときだけ設定できる**。片方だけ・短いパスワードでは起動しない
+- Basic 認証を設定すると、画面も API も、認証を通るまで何も返さない(この PC の中からでも要る)
+- 同じ相手が 5 回まちがえると、15 分のあいだ受け付けない(相手は、トンネルが付ける `CF-Connecting-IP` で見分ける)。
+  自分が締め出されたら、15 分待つか、`systemctl --user restart video-vault-web`
+- 公開用の名前に http で来た要求は、認証を求める前に https へ回す
+- **パスワードを変える**: `~/.config/video-vault/web.env` を書き換えて、`systemctl --user restart video-vault-web`
+
+### 外から確かめたこと(2026-11-24)
+
+| 確かめ | 結果 |
+|---|---|
+| 認証なし(画面・API) | 401。合言葉の入った HTML を返さない |
+| 正しい認証 / 誤った認証 | 200 / 401 |
+| 認証は通るが合言葉なしの命令 / 別のサイトからの命令 | 401 / 403 |
+| http で来た要求 | 308 で https へ。認証は求めない |
+| 誤りを 5 回のあと、正しいパスワード | 429(この PC の中からは 200) |
+| 外の URL から YouTube の公開の動画を 1 本渡す | 成功。結合された 1 本が Surface の保存先にできた。進み具合の通知も届いた |
+| 待ち受けているアドレス | `127.0.0.1:8787` だけ |
+
+### 外から使うときに足りないもの
+
+- **ログインの操作ができない**。ログイン用のブラウザの窓は Surface の画面に出る。会員向けのサイトは、Surface の前(か RDP)でログインする
+- **取ったファイルを取り出せない**。Surface のダウンロードフォルダの `videos` に残る
+- アプリを入れ直す(`restart`)と、トンネルも一緒に入れ直され、外からは数秒のあいだ届かない(530 が返る)
 
 ## 使い方
 
@@ -108,7 +166,7 @@ journalctl --user -u video-vault-web -n 50   # ログ
 | `VIDEO_VAULT_AUTH_DIR` | `web/.auth` | ログインの状態(ブラウザのプロファイルと Cookie の写し) |
 | `VIDEO_VAULT_DATA_DIR` | `web/.data` | 履歴 |
 
-**待ち受けるアドレスは `127.0.0.1` に固定で、環境変数でも変えられない**(ダウンロード系の機能を公開の URL に出さない。AGENTS.md)。
+**待ち受けるアドレスは `127.0.0.1` に固定で、環境変数でも変えられない**。外からの道は Cloudflare Tunnel だけにする(下の「外から使う」)。
 
 ## Android との違い
 

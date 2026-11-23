@@ -191,7 +191,7 @@ test('Basic 認証つき: 認証を通るまで何も返さず、通っても合
       if (body !== null) r.write(body);
       r.end();
     });
-  const viaTunnel = (ip, extra = {}) => ({ Host: 'v.example.test', 'CF-Connecting-IP': ip, ...extra });
+  const viaTunnel = (ip, extra = {}) => ({ Host: 'v.example.test', 'CF-Connecting-IP': ip, 'X-Forwarded-Proto': 'https', ...extra });
   try {
     // 認証なし・誤りでは、画面も API も 401。合言葉の入った HTML を返さない
     const none = await req({ headers: viaTunnel('198.51.100.1') });
@@ -202,6 +202,20 @@ test('Basic 認証つき: 認証を通るまで何も返さず、通っても合
     for (const [u, p] of [[USER, 'wrong'], ['wrong', PW], [USER, ''], ['', ''], [USER, `${PW}x`]]) {
       assert.equal((await req({ headers: viaTunnel('198.51.100.2', auth(u, p)) })).status, 401, `${u}:${p}`);
     }
+
+    // http で来た要求は、認証を求めずに https へ回す(パスワードを暗号化されない区間で送らせない)
+    for (const proto of ['http', undefined, 'HTTPS', 'https, http']) {
+      const headers = { Host: 'v.example.test', 'CF-Connecting-IP': '198.51.100.7', ...auth(USER, PW) };
+      if (proto !== undefined) headers['X-Forwarded-Proto'] = proto;
+      const r = await req({ pathname: '/api/state?token=abc', headers });
+      assert.equal(r.status, 308, String(proto));
+      assert.equal(r.headers.location, 'https://v.example.test/api/state?token=abc');
+      assert.equal(r.headers['www-authenticate'], undefined, 'http の要求に認証を求めている');
+      assert.ok(!r.text.includes(pub.token));
+    }
+    assert.equal(none.headers['strict-transport-security'], 'max-age=31536000');
+    // この PC の中の名前では、https を求めない(http でしか使えない)
+    assert.equal((await req({ headers: { Host: `127.0.0.1:${pub.port}`, ...auth(USER, PW) } })).headers['strict-transport-security'], undefined);
 
     // 認証を通ると画面が出る。公開用のホスト名でも、この PC の中の名前でも同じ
     const ok = await req({ headers: viaTunnel('198.51.100.3', auth(USER, PW)) });

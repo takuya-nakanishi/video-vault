@@ -26,6 +26,8 @@ test-results/
 .auth/
 # PC 版の履歴(何を取ったかの記録)
 .data/
+# Python のキャッシュ
+__pycache__/
 *storageState*.json
 # エージェントの作業worktree
 .claude/worktrees/

@@ -223,6 +223,15 @@ export function createApp(config, overrides = {}) {
     if (!allowedHosts().has(String(req.headers.host ?? '').toLowerCase())) {
       return send(res, 403, { error: 'この名前では受け付けない' });
     }
+    // 公開用の名前に http で来た要求は、認証を求める前に https へ回す。ここで認証を求めると、ブラウザがパスワードを
+    // 暗号化されない区間(ブラウザと Cloudflare のあいだ)で送ってしまう(2026-11-24 に外から確かめて見つけた)。
+    // トンネルは、外の人が使った方式を X-Forwarded-Proto で伝える。https と書かれていなければ、https でないとみなす
+    const viaPublicHost = publicHost !== null && String(req.headers.host ?? '').toLowerCase() === publicHost;
+    if (viaPublicHost && req.headers['x-forwarded-proto'] !== 'https') {
+      return send(res, 308, { error: 'https で開く' }, undefined, { Location: `https://${publicHost}${req.url}` });
+    }
+    // 次からは、ブラウザが自分で https を使う
+    if (viaPublicHost) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     // 画面も API も、Basic 認証を通ってからでないと何も返さない(合言葉の入った HTML も返さない)
     if (rejectByBasic(req, res) !== null) return;
     const url = new URL(req.url, `http://${req.headers.host}`);
