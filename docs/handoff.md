@@ -68,9 +68,13 @@ yt-dlp の Vidyard 抽出器がパスワードを扱えず、`KeyError('chapters
   Cookie は全体で 1 つ、Vidyard のパスワードは yt-dlp 任せで取れない
 - **まだ確かめていないこと**(作る前に小さく試す):
   1. 映した画面ごしのログインが通るか。特に Google ログイン(NewsPicks)は、自動操作のブラウザを弾くことがある
-  2. PC の yt-dlp で NewsPicks・LinkedIn が Cookie 付きで落とせるか(WSL には yt-dlp がまだ入っていない)
+  2. PC の yt-dlp で NewsPicks・LinkedIn が Cookie 付きで落とせるか
   3. Tailscale(Windows 側で動いている)から WSL のサーバへ届ける道(`tailscale serve` か、WSL のネットワークの設定)
-- この PC にあるもの(2026-11-23 確認): Playwright の Chromium(`~/.cache/ms-playwright`)・Xvfb・Node・Docker。無いもの: x11vnc・websockify・yt-dlp
+- この PC にあるもの(2026-11-23 確認): Playwright の Chromium(`~/.cache/ms-playwright`)・Xvfb・Node・Docker・ffmpeg(`~/.local/bin/ffmpeg`)。無いもの: x11vnc・websockify・Deno
+- **yt-dlp は WSL に入っている**(`~/.local/bin/yt-dlp`。2026.10.26 の安定版。`python3 -m yt_dlp` でも動く)。
+  **非対話のシェルの PATH には `~/.local/bin` が無く、`yt-dlp` だけで呼ぶと `command not found` になる**(これで一度「入っていない」と誤って報告した)。
+  スクリプトやサーバからは絶対パスか `python3 -m yt_dlp` で呼ぶ。Windows 側には入っていない。
+  設定 `~/.config/yt-dlp/config` は `--remote-components ejs:github` の 1 行。JavaScript ランタイムは Node だけある(YouTube がこれで通るかは未確認)
 - パスキーだけのサイトは、映した画面ごしでも通せない見込み(認証する端末が PC 側になるため。未確認)
 
 ## 次のアクション(優先順)
