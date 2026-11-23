@@ -1,7 +1,7 @@
 # video-vault — 自分用動画ダウンロードアプリ(独立リポジトリ)
 
 自分のインプット動画(YouTube・X・GFS等)をダウンロードし、fire取込パイプラインの入口となるAndroidアプリ。
-いまは Android アプリだけだが、**これから Web の仕組みと Playwright を入れる**(下の「Web と Playwright」)。
+Android アプリに加えて、**手元の PC で動かす PC 版(`web/`)**がある(下の「Web(PC 版)と Playwright」)。
 **Play公開しない(サイドロード運用)**。私的利用限定・取得物の第三者共有不可。
 
 商用アプリ personal-ai(Play配信。sc-products の `apps/personal-ai`)とは配布形態も機能境界も異なる二層構造(下の「位置づけと公開ルール」)。
@@ -76,20 +76,43 @@
 [共通規約](../agent-base/host/global/AGENTS.md)の「作業の裁量と確認」節に従う(正本は本体の clone と同じ親ディレクトリの `agent-base/host/global/AGENTS.md`)。
 このリポジトリ固有の禁止事項は上の「git運用」が優先する。
 
-## Web と Playwright(これから入れる)
+## Web(PC 版)と Playwright
 
-Android アプリに加えて、Web の仕組みと Playwright を入れる(2026-11-22 本人)。何に使うかは、入れるときに決めてこの節を書き直す。
+**`web/` は、ゲットVIDEO の PC 版**(2026-11-23 本人の決定)。手元の PC で動かし、アプリが開くブラウザでログインして、yt-dlp で取得する。
+Android と同じ流れ(内蔵ブラウザでログイン → Cookie を渡す → yt-dlp)を、PC の部品で組んだもの。
+入れ方・使い方・Android との違い・つまずきどころは **`docs/web.md` が正**(ここは変わらない規約だけ)。
 
 | 置き場 | 中身 |
 |---|---|
 | `android/` | Android アプリ(Gradle 一式。`android/scripts/` は煙試験・実機への配布など Android の道具) |
-| `web/` | Web と Playwright(まだ無い。入れるときに作る) |
+| `web/` | PC 版(Node。`src/` が本体、`public/` が画面、`test/` が単体、`e2e/` が通しの試験) |
 | 根 | リポジトリ全体のもの(`AGENTS.md`・`docs/`・`llm-wiki/`・`scripts/wiki/`・`.agents/`・`.claude/`) |
 
-- 上の「位置づけと公開ルール」は Web にもそのまま及ぶ。ダウンロード系の機能を公開の URL に出さない
-- Playwright のログインの状態(storageState)・trace・動画・スクリーンショットには Cookie や入力したパスワードが入る。**git に入れない**。ログインの状態は `.auth/` の下か、名前に `storageState` を含むファイルに置き、出力は `test-results/`・`playwright-report/` に出す(どれもどの階層でも `.gitignore` 済み。それ以外の場所は無視されない)。人に見せるときも、写り込んだ認証情報を伏せる
-- 自動テストの合格判定は Web でも上の「動作確認の規律」に従う(機械が判定できる形・異常系も流す・判定は厳しく)
+- **Android アプリの要件はそのまま残す**(2026-11-23 本人)。PC 版は横に足した別の仕組みで、Android のコードを変えない
+- **公開の MeTube(alexta69/metube)は使わない**。ログインの画面が無く、Vidyard のパスワードも扱えないため、自分で作ると決めた
+- 上の「位置づけと公開ルール」は Web にもそのまま及ぶ。**待ち受けるアドレスは `127.0.0.1` に固定**(`web/src/config.mjs` の `LISTEN_HOST`)。
+  環境変数で変えられる作りにしない。ほかの PC やスマホから使う口を足すときも、公開の URL には出さない
+- **別のサイトから命令を送らせない**。ブラウザで開いた別のページは、この PC のサーバへ要求を送れる。サーバは Host・合言葉(起動のたびに作るトークン)・
+  Origin の 3 つを確かめる(`web/src/server.mjs`)。口を足すときも、この 3 つを外さない
+- **判定表(`site_patterns.json`)とバッジの JS(`video_badge.js`)は Android と同じファイルを読む**。写しを持たない。どちらかを変えたら `web` の試験も走らせる
+- **認証情報を残さない**。Cookie は yt-dlp に渡す一時ファイルにだけ書き、終わったら消す。Vidyard のパスワードとトークンはメモリだけ。
+  履歴・画面に返す状態・ログ・エラーの文に、Cookie・パスワード・トークンを入れない。yt-dlp の引数(Cookie のファイルの場所とトークンが入る)もログに出さない
+- ログインの状態(ブラウザのプロファイル・Cookie の写し・Playwright の storageState)・trace・動画・スクリーンショットには Cookie や入力したパスワードが入る。**git に入れない**。
+  ログインの状態は `.auth/` の下か、名前に `storageState` を含むファイルに置き、履歴は `.data/` に、試験の出力は `test-results/`・`playwright-report/` に出す
+  (どれもどの階層でも `.gitignore` 済み。それ以外の場所は無視されない)。人に見せるときも、写り込んだ認証情報を伏せる
+- 自動テストの合格判定は Web でも上の「動作確認の規律」に従う(機械が判定できる形・異常系も流す・判定は厳しく)。
+  **試験は実在の外部サイトへ書き込まない**。ログインの流れは、この PC の中に立てる偽のサイト(`web/e2e/fakeSite.mjs`)を相手にする。
+  待ち合わせは、条件が成り立つまでの待ち(期限つき)で行い、固定の sleep に頼らない
+- 試験のためだけに規則を緩める切り替え(`allowLoopback`)は、環境変数や画面から入らないようにしてある。同じ種類の切り替えを足すときも、そうする
 - 下の「スタック」「ビルド・実行」「コード構成」は Android アプリのこと
+
+```bash
+cd web
+npm test                                 # 単体(外へ通信しない)
+npm run e2e                              # 通し(実物の yt-dlp とブラウザ・偽のサイト)
+VIDEO_VAULT_E2E_NETWORK=1 npm run e2e    # 実際の YouTube と公開の Vidyard からも取る
+npm start                                # 起動(出てきた URL をブラウザで開く)
+```
 
 ## スタック
 
@@ -148,7 +171,8 @@ ui/        Compose。画面は状態を持たず、状態は VideoVaultViewModel
 res/       drawable/ic_*.xml は自作の線アイコン(24dp・2dp線)。ic_launcher_* がアプリアイコン(ベクタのみ)
 ```
 
-- **URLパターン表は `android/app/src/main/assets/site_patterns.json`**。サイトが増えてもコードは触らない
+- **URLパターン表は `android/app/src/main/assets/site_patterns.json`**。サイトが増えてもコードは触らない。
+  PC 版(`web/`)も、この表と `video_badge.js` を同じファイルから読む。変えたら `web` の試験も走らせる
 - 判定・履歴・タイトル抽出・時刻表示のテストは `android/app/src/test/`。`android/` で `./gradlew testDebugUnitTest` を叩けば実機なしに回る
 - 内蔵ブラウザは**ダウンロードを始めてもホームへ戻らない**。画質シート・進捗・結果を
   ブラウザ画面の上に重ねる。戻すとWebViewが破棄され、見ていた動画の再生が止まってページも読み直しになる

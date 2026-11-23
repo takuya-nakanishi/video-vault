@@ -1,0 +1,16 @@
+{
+  "name": "video-vault-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ゲットVIDEO の PC 版。手元の PC で動かし、アプリが開くブラウザでログインして yt-dlp で取得する(公開しない)",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "e2e": "node --test --test-concurrency=1 \"e2e/*.e2e.mjs\""
+  },
+  "dependencies": {
+    "playwright": "1.65.1"
+  }
+}
