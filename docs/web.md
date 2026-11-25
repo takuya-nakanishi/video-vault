@@ -134,6 +134,64 @@ npm run user -- remove <メールアドレス>             # 消す(その人の
 - 「内部」だけでは足りない。「内部」は Workspace の全員を通すので、入れる人は利用者の表で限る
 - **2026-11-25 の時点で、まだ有効にしていない**(クライアントをまだ作っていない)。偽の Google を相手にした試験は通っている。本物の Google では確かめていない
 
+### 手元の PC の Chrome・Edge から送る(拡張機能)
+
+2026-11-25 に入れた(本人の決定。スマホも画面も通さずに、手元の PC から送る)。
+
+```mermaid
+flowchart LR
+  C["手元の Chrome・Edge<br/>(ふだんどおりログイン)"]
+  E["拡張機能 web/extension<br/>(ボタン・右クリック)"]
+  A["/api/v1/downloads<br/>(端末の鍵で確かめる)"]
+  Y["Surface の yt-dlp"]
+  F["Surface の保存先"]
+  C -->|"そのページの Cookie"| E -->|"https: URL + Cookie + 端末の鍵"| A --> Y --> F
+```
+
+- 手元のブラウザで、ふだんどおりサイトにログインしておく。拡張機能は、押したときに、送る URL に付く Cookie だけを読んで一緒に送る(`web/extension/background.js`)
+- Surface は端末の鍵で送り手を確かめる。画面のログイン・合言葉・Origin ではなく、鍵で確かめる口(`web/src/server.mjs` の `deviceApi`)
+- 受けた Cookie は、その 1 件の取得にだけ使う。Cookie を送らなかったとき(ほかの道具から送るとき)は、Surface のログイン用のブラウザの Cookie を使う
+- 図の対象外: Claude のセッション・Remote Control・スマホ。どれも、この流れに入らない
+
+#### 入れ方(手元の PC ごとに 1 回)
+
+1. Surface で端末の鍵を作る: `cd web && npm run user -- add-device <名前>`(鍵は 1 度だけ表示される。同じ名前で作り直すと、前の鍵は効かなくなる)
+2. 拡張機能のフォルダを手元の PC に置く。リポジトリを clone してある PC なら `web\extension`。そうでなければ、そのフォルダを写す
+3. Chrome なら `chrome://extensions`、Edge なら `edge://extensions` を開き、「デベロッパー モード」を入れて、「パッケージ化されていない拡張機能を読み込む」で 2 のフォルダを選ぶ
+4. 開いた設定の画面に、1 の鍵を貼って「保存してつながるか試す」。「つながった」と出れば済み
+5. フォルダを動かしたり消したりすると、拡張機能が動かなくなる。拡張機能を直したら、フォルダを置き換えて、拡張機能の画面の「再読み込み」を押す
+
+#### 使い方
+
+- **ツールバーのボタン**: いま見ているページを送る
+- **右クリック**: 「このページをゲットVIDEO に送る」「このリンク先をゲットVIDEO に送る」
+- 送れたら、ボタンに ✓ が出て、通知が出る。断られたら ! と理由が出る
+- 画質は、拡張機能の設定の画面で決める(既定はオリジナル)
+
+#### 端末の鍵の扱い
+
+```bash
+cd web
+npm run user -- list-devices                 # いる端末
+npm run user -- add-device <名前>             # 作る・作り直す
+npm run user -- remove-device <名前>          # 消す(その鍵は、もう効かない)
+```
+
+- 鍵のまちがいが同じ相手から 10 回続くと、15 分のあいだ受け付けない
+- 端末から来る要求の本文の上限は 512KB(Cookie が入るので、画面からの要求より大きい)
+
+#### 確かめたこと(2026-11-25)
+
+| 確かめ | 結果 |
+|---|---|
+| 単体の試験(受け口・端末の鍵・送られる Cookie の形) | 合格 |
+| 拡張機能を実物の Chromium に読み込ませた通しの試験(偽のログイン付きサイト) | 7 件が合格。ログインした Cookie が渡り、取れたファイルは配った中身と 1 バイトも違わない。ほかのサイトの Cookie は送らない |
+| 拡張機能とサーバを 6 か所わざと壊す | どれも試験が落ちた |
+| 拡張機能から本番(`ytdlp.sanei-clover.com`)へ YouTube の公開の動画を送る | 結合された 1 本が Surface にできた(確かめたあと、ファイルと履歴は消した) |
+
+- **確かめていないこと**: 本人の手元の Chrome に読み込ませること(人の操作が要る)。ログインが要る実物のサイト(NewsPicks など)を、手元の Chrome の Cookie で取ること
+- 試験は Playwright の完全版の Chromium を使う。既定の headless が使う軽い版は拡張機能を読まない。Chrome・Edge の正式版は、起動の引数で拡張機能を読ませる口を閉じている
+
 ### 作り方(やり直すとき)
 
 ```bash
@@ -202,6 +260,7 @@ web/deploy/cloudflare-tunnel.py ytdlp.sanei-clover.com --remove   # DNS のレ�
 | `VIDEO_VAULT_PUBLIC_HOST` | 無し | 外から届く名前(ホスト名だけ)。指定すると、必ずログインを求める |
 | `VIDEO_VAULT_GOOGLE_CLIENT_ID`・`VIDEO_VAULT_GOOGLE_CLIENT_SECRET` | 無し | 「Google でログイン」。両方を指定する |
 | `VIDEO_VAULT_USERS_FILE` | `~/.config/video-vault/users.json` | 利用者の表 |
+| `VIDEO_VAULT_DEVICES_FILE` | `~/.config/video-vault/devices.json` | 端末の鍵の表(sha256 だけ) |
 
 **待ち受けるアドレスは `127.0.0.1` に固定で、環境変数でも変えられない**。外からの道は Cloudflare Tunnel だけにする(下の「外から使う」)。
 
@@ -239,6 +298,7 @@ cd web
 npm test                                 # 単体(外へ通信しない・ブラウザも yt-dlp も起動しない。ログインは偽の Google を相手にする)
 npm run e2e                              # 通し(実物の yt-dlp とブラウザ。相手はこの PC の中に立てる偽のサイト)
 VIDEO_VAULT_E2E_NETWORK=1 npm run e2e    # 上に加えて、実際の YouTube と公開の Vidyard から取る
+# 通しの試験には、拡張機能を実物の Chromium に読み込ませるものも入る(完全版の Chromium が要る。無ければ npx playwright install chromium)
 ```
 
 - 通しの試験は、偽のログイン付きサイトを 127.0.0.1 に立てて、ログイン → バッジ → 取得 → 中断までを流す。

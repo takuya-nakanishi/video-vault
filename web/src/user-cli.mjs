@@ -5,6 +5,8 @@
 //   npm run user -- set-password <メールアドレス>   パスワードを作り直して 1 度だけ表示する(その人のログインは全部切れる)
 //   npm run user -- list                           いる人を並べる(パスワードは出さない)
 //   npm run user -- remove <メールアドレス>         消す(その人のログインは全部切れる)
+//   npm run user -- add-device <名前>              端末の鍵(拡張機能などに入れる)を作って 1 度だけ表示する。同じ名前なら作り直す
+//   npm run user -- list-devices / remove-device <名前>
 //
 // 自分で決めたパスワードを使うときは、標準入力から渡す: echo '…' | npm run user -- set-password <メールアドレス> --stdin
 import crypto from 'node:crypto';
@@ -13,6 +15,7 @@ import { loadConfig } from './config.mjs';
 import { UserStore, normalizeEmail } from './auth/users.mjs';
 import { SessionStore } from './auth/sessions.mjs';
 import { hashPassword } from './auth/password.mjs';
+import { DeviceStore } from './auth/devices.mjs';
 
 const [command, rawEmail, ...flags] = process.argv.slice(2);
 // 保存先などの探索(Windows のダウンロードフォルダ)を走らせないために、保存先だけ仮に決める
@@ -31,7 +34,25 @@ async function newPassword() {
   return { password: text.replace(/\r?\n$/, ''), generated: false };
 }
 
-if (command === 'list') {
+const devices = new DeviceStore(config.devicesFile);
+
+if (command === 'add-device') {
+  let key;
+  try {
+    key = devices.create(rawEmail);
+  } catch (e) {
+    fail(e.message);
+  }
+  console.log(`端末の鍵を作った: ${rawEmail}`);
+  console.log(`鍵(この 1 度だけ表示する): ${key}`);
+} else if (command === 'list-devices') {
+  const all = devices.list();
+  if (!all.length) console.log(`端末はない(${devices.file})`);
+  for (const d of all) console.log(`${d.name}\t作った日: ${new Date(d.createdAt).toISOString().slice(0, 10)}`);
+} else if (command === 'remove-device') {
+  if (!devices.remove(rawEmail)) fail(`いない: ${rawEmail}`);
+  console.log(`消した: ${rawEmail}(その鍵は、もう効かない)`);
+} else if (command === 'list') {
   const all = users.list();
   if (!all.length) console.log(`利用者はいない(${users.file})`);
   for (const u of all) console.log(`${u.email}\tパスワード: ${u.passwordHash ? 'あり' : 'なし'}\tGoogle: ${u.googleSub ? '結んである' : 'まだ'}`);
@@ -63,5 +84,5 @@ if (command === 'list') {
   sessions.deleteFor(email);
   console.log(`消した: ${email}`);
 } else {
-  fail('使い方: npm run user -- <add|set-password|list|remove> [メールアドレス] [--no-password|--stdin]');
+  fail('使い方: npm run user -- <add|set-password|list|remove|add-device|list-devices|remove-device> [メールアドレス・端末の名前] [--no-password|--stdin]');
 }

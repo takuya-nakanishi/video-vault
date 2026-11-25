@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "ゲットVIDEO に送る",
+  "description": "いま見ているページかリンクを、Surface のゲットVIDEO(PC 版)へ送ってダウンロードさせる。ログインはこのブラウザのものを使う。",
+  "version": "0.1.0",
+  "icons": { "128": "icon-128.png" },
+  "action": { "default_title": "このページをゲットVIDEO に送る", "default_icon": { "128": "icon-128.png" } },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "permissions": ["cookies", "contextMenus", "storage", "notifications"],
+  "host_permissions": ["<all_urls>"]
+}

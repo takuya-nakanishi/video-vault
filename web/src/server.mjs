@@ -23,6 +23,8 @@ import { UserStore } from './auth/users.mjs';
 import { SessionStore } from './auth/sessions.mjs';
 import { OidcClient } from './auth/oidc.mjs';
 import { createAuth } from './auth/http.mjs';
+import { DeviceStore } from './auth/devices.mjs';
+import { parseJobCookies } from './jobCookies.mjs';
 
 const PUBLIC_DIR = path.join(WEB_ROOT, 'public');
 const STATIC = {
@@ -31,6 +33,10 @@ const STATIC = {
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
 };
 const MAX_BODY_BYTES = 64 * 1024;
+/** 端末から来る要求の本文の上限。Cookie が入るので、画面からの要求より大きく取る */
+const DEVICE_MAX_BODY_BYTES = 512 * 1024;
+export const DEVICE_MAX_FAILURES = 10;
+export const DEVICE_LOCK_MS = 15 * 60 * 1000;
 
 /** よく行くページ。Android の DefaultBookmarks と同じ 4 件(YouTube だけ PC 向けの URL) */
 const BOOKMARKS = [
@@ -46,7 +52,7 @@ function safeEqual(a, b) {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
-function readJson(req) {
+function readJson(req, limit = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
@@ -54,7 +60,7 @@ function readJson(req) {
     req.on('data', (c) => {
       if (tooLarge) return; // 残りは読み捨てる(貯めない)
       size += c.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > limit) {
         // ここで接続を切ると、相手には 413 ではなく切断として見える。断りの応答を返してから閉じる
         tooLarge = true;
         chunks.length = 0;
@@ -192,6 +198,47 @@ export function createApp(config, overrides = {}) {
           redirectUri: `https://${publicHost}/auth/google/callback`,
         })
       : null);
+  // 端末の鍵で受ける口(/api/v1/)。画面のログインとは別の守り。鍵のまちがいが続いた相手は締め出す
+  const devices = new DeviceStore(config.devicesFile ?? path.join(config.dataDir, 'devices.json'));
+  const deviceFailures = new Map();
+
+  async function deviceApi(req, res, url) {
+    const who = String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '');
+    const f = deviceFailures.get(who);
+    if (f && f.until > now()) {
+      return send(res, 429, { error: 'まちがいが続いたので、しばらく受け付けない' }, undefined, {
+        'Retry-After': String(Math.ceil((f.until - now()) / 1000)),
+      });
+    }
+    const m = /^Bearer (\S+)$/.exec(String(req.headers.authorization ?? ''));
+    const device = m ? devices.verify(m[1]) : null;
+    if (!device) {
+      if (deviceFailures.size > 5000) deviceFailures.clear();
+      const count = (f && f.until <= now() && f.count >= DEVICE_MAX_FAILURES ? 0 : (f?.count ?? 0)) + 1;
+      deviceFailures.set(who, { count, until: count >= DEVICE_MAX_FAILURES ? now() + DEVICE_LOCK_MS : 0 });
+      return send(res, 401, { error: '端末の鍵が違う' }, undefined, { 'WWW-Authenticate': 'Bearer' });
+    }
+    deviceFailures.delete(who);
+    if (url.pathname === '/api/v1/ping') {
+      return req.method === 'GET' ? send(res, 200, { ok: true, device: device.name }) : send(res, 405, { error: 'この方法では受け付けない' });
+    }
+    if (url.pathname !== '/api/v1/downloads') return send(res, 404, { error: '無い' });
+    if (req.method !== 'POST') return send(res, 405, { error: 'この方法では受け付けない' });
+    if (!String(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
+      return send(res, 415, { error: 'JSON だけを受け付ける' });
+    }
+    const body = await readJson(req, DEVICE_MAX_BODY_BYTES);
+    let cookies;
+    try {
+      cookies = parseJobCookies(body.cookies);
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e.message });
+    }
+    const str = (v) => (typeof v === 'string' ? v : '');
+    const r = center.enqueue({ url: str(body.url), quality: str(body.quality), password: str(body.password), cookies, source: 'extension' });
+    return send(res, r.ok ? 200 : 400, r);
+  }
+
   const auth = createAuth({
     users,
     sessions: new SessionStore(path.join(config.dataDir, 'sessions.json'), now),
@@ -218,6 +265,9 @@ export function createApp(config, overrides = {}) {
     // 次からは、ブラウザが自分で https を使う
     if (viaPublicHost) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     const url = new URL(req.url, `http://${req.headers.host}`);
+
+    // 端末の鍵で受ける口。画面のログイン・合言葉・Origin ではなく、鍵で確かめる(Cookie で入らないので、別のサイトに踏まされない)
+    if (url.pathname.startsWith('/api/v1/')) return deviceApi(req, res, url);
 
     // ログインを通ってからでないと、画面も API も何も返さない(合言葉の入った HTML も返さない)。
     // ログインの前に受けるのは、ログインの画面とその口だけ(auth/http.mjs)

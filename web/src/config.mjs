@@ -73,6 +73,7 @@ function loadRemoteAccess(env) {
     googleClientId,
     googleClientSecret,
     usersFile: path.resolve(env.VIDEO_VAULT_USERS_FILE ?? path.join(privateConfigDir(env), 'users.json')),
+    devicesFile: path.resolve(env.VIDEO_VAULT_DEVICES_FILE ?? path.join(privateConfigDir(env), 'devices.json')),
   };
 }
 

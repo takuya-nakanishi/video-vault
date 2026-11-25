@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>ゲットVIDEO に送る - 設定</title>
+  <style>
+    :root { --bg: #f7f6fc; --surface: #fff; --fg: #1b1830; --muted: #625e7a; --line: #dedbee; --accent: #4f3de8; --ok: #1f8a4c; --danger: #c93a2b; color-scheme: light; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #121021; --surface: #1c1930; --fg: #ecebf7; --muted: #a9a5c4; --line: #322e4d; --accent: #8f84ff; --ok: #6fd69a; --danger: #ff8a7a; color-scheme: dark; } }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 "Yu Gothic UI", "Hiragino Sans", system-ui, sans-serif; }
+    main { max-width: 520px; margin: 40px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 8px; }
+    h1 { font-size: 1.2rem; margin: 0 0 8px; }
+    label { font-size: .85rem; color: var(--muted); margin-top: 8px; }
+    input, select, button { font: inherit; color: inherit; }
+    input, select { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
+    .row { display: flex; gap: 8px; margin-top: 12px; }
+    button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    #status { min-height: 1.5em; margin: 8px 0 0; }
+    .ok { color: var(--ok); } .error { color: var(--danger); }
+    p.hint { color: var(--muted); font-size: .85rem; margin: 16px 0 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ゲットVIDEO に送る - 設定</h1>
+    <label for="server">送り先</label>
+    <input id="server" type="url" autocomplete="off" spellcheck="false">
+    <label for="key">端末の鍵(Surface で <code>npm run user -- add-device &lt;名前&gt;</code> を実行して作る)</label>
+    <input id="key" type="password" autocomplete="off" spellcheck="false">
+    <label for="quality">画質</label>
+    <select id="quality">
+      <option value="ORIGINAL">オリジナル(サイトの最高画質)</option>
+      <option value="HD">HD(1080p まで)</option>
+      <option value="SD">SD(480p まで)</option>
+    </select>
+    <div class="row">
+      <button type="button" class="primary" id="save">保存してつながるか試す</button>
+    </div>
+    <p id="status" role="status"></p>
+    <p class="hint">使い方: ツールバーのボタンを押すと、いま見ているページを送る。右クリックのメニューからは、リンク先も送れる。
+      ログインが要るサイトは、このブラウザでふつうにログインしておく(送るときに、そのサイトの Cookie を一緒に渡す)。</p>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

@@ -26,7 +26,7 @@ function notify(text, isError = false) {
 }
 
 const STATUS_LABEL = { SUCCESS: '完了', FAILED: '失敗', CANCELLED: '中断', RUNNING: '実行中' };
-const SOURCE_LABEL = { badge: 'バッジから', input: '' };
+const SOURCE_LABEL = { badge: 'バッジから', input: '', extension: '拡張機能から' };
 
 function relativeTime(ms) {
   const sec = Math.max(0, Math.round((Date.now() - ms) / 1000));

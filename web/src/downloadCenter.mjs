@@ -19,6 +19,8 @@ export class DownloadCenter extends EventEmitter {
   #cancelRunning = null;
   /** パスワードはここ(メモリ)にだけ置く。ジョブにも履歴にも状態の JSON にも入れない */
   #passwords = new Map();
+  /** 送り手が 1 件ごとに渡した Cookie。ここ(メモリ)にだけ置き、その 1 件の取得にだけ使う */
+  #jobCookies = new Map();
   #history;
   #idle = Promise.resolve();
 
@@ -69,7 +71,11 @@ export class DownloadCenter extends EventEmitter {
    * 順番待ちに積む。
    * @returns {{ok:true,id:string}|{ok:false,error:string}}
    */
-  enqueue({ url: rawUrl, quality, password, source = 'input' }) {
+  /**
+   * @param {object[]|null} [cookies] 送り手が渡した Cookie(jobCookies.mjs で形を確かめたもの)。渡されたら、ログイン用の
+   *   ブラウザの Cookie ではなく、これだけを使う(空の並びなら Cookie なし)
+   */
+  enqueue({ url: rawUrl, quality, password, cookies = null, source = 'input' }) {
     const url = normalizeUrl(rawUrl, { allowLoopback: this.allowLoopback });
     if (!url) return { ok: false, error: 'URL として読めない(http・https の URL だけを受け付ける)' };
     const rule = this.catalog.ruleFor(hostOf(url));
@@ -91,6 +97,7 @@ export class DownloadCenter extends EventEmitter {
       title: null,
     };
     if (typeof password === 'string' && password) this.#passwords.set(job.id, password);
+    if (Array.isArray(cookies)) this.#jobCookies.set(job.id, cookies);
     this.#queue.push(job);
     this.#changed();
     this.#pump();
@@ -103,6 +110,7 @@ export class DownloadCenter extends EventEmitter {
     if (i >= 0) {
       this.#queue.splice(i, 1);
       this.#passwords.delete(id);
+      this.#jobCookies.delete(id);
       this.#changed();
       return true;
     }
@@ -146,6 +154,7 @@ export class DownloadCenter extends EventEmitter {
         this.#running = null;
         this.#cancelRunning = null;
         this.#passwords.delete(job.id);
+        this.#jobCookies.delete(job.id);
         this.#changed();
         this.#pump();
       });
@@ -191,7 +200,8 @@ export class DownloadCenter extends EventEmitter {
       }
       ensureNotCancelled();
 
-      cookieFile = await writeCookieFile(await this.cookiesProvider(), this.tmpRoot);
+      const given = this.#jobCookies.get(job.id);
+      cookieFile = await writeCookieFile(given ?? (await this.cookiesProvider()), this.tmpRoot);
       ensureNotCancelled();
 
       const args = buildArgs({

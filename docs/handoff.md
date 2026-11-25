@@ -37,6 +37,10 @@
   - **「Google でログイン」は、作ってあるが、まだ有効にしていない**。本人が Google Cloud で OAuth クライアントを作り、ID とシークレットを
     `~/.config/video-vault/web.env` に置くと出る(`web.md`「Google でログイン」を有効にする)。偽の Google を相手にした試験は通っている。**本物の Google では確かめていない**。
     いまの利用者のアドレスは Gmail のもの。同意画面を「内部」にするなら、Workspace のアドレスの利用者を足す必要がある
+  - **手元の PC からは、Chrome・Edge の拡張機能で送る**(2026-11-25 本人。スマホも画面も通さない。案 2: ダウンロードは Surface)。
+    拡張機能は `web/extension/`。いま見ているページの URL と、そのサイトの Cookie を、端末の鍵を付けて Surface へ送る。入れ方は `web.md`「手元の PC の Chrome・Edge から送る」。
+    端末の鍵 `windows-chrome` を作った。拡張機能の写しを Surface の Windows のダウンロードフォルダ `getvideo-extension` に置いた。
+    **本人の手元の Chrome に読み込ませるのは、まだ**(人の操作が要る)。本番へ送って YouTube の公開の動画が取れることは、試験用の Chromium で確かめた
   - Works(perfect-crm)のログインは変えない(本人)。Google Cloud のプロジェクトを Works と分ける必要は無い(クライアントを分ければ足りる。`web.md`)
   - **外からは、ログインの操作ができず、取ったファイルも取り出せない**(窓と保存先が Surface にある)。次に作るなら、この 2 つ
   - Works のトンネルには相乗りしていない。perfect-crm の `scripts/cloudflare-tunnel-setup.py` は「この LAN のトンネルは 1 本に集約する」としているが、
