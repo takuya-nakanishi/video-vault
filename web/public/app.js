@@ -159,6 +159,23 @@ $('input').addEventListener('keydown', (e) => {
 });
 $('clear-history').addEventListener('click', () => api('/api/history/clear'));
 
+// ログインしているときだけ、誰で入っているかとログアウトを出す
+const account = $('account');
+if (account.dataset.user) {
+  $('account-user').textContent = account.dataset.user;
+  account.hidden = false;
+  $('logout').addEventListener('click', async () => {
+    await fetch('/auth/logout', { method: 'POST' }).catch(() => {});
+    location.replace('/login');
+  });
+}
+
 const events = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
 events.onmessage = (e) => render(JSON.parse(e.data));
-events.onerror = () => notify('サーバとつながっていない。起動し直してから、このページを読み込み直す', true);
+events.onerror = async () => {
+  // ログインが切れたときは、ログインの画面へ戻す
+  const res = await fetch('/auth/config').catch(() => null);
+  const me = res?.ok ? await fetch(`/api/state?token=${encodeURIComponent(token)}`).catch(() => null) : null;
+  if (me?.status === 401) return location.replace('/login');
+  notify('サーバとつながっていない。少し待ってから、このページを読み込み直す', true);
+};

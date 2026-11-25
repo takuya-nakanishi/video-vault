@@ -1,4 +1,4 @@
-# video-vault 引き継ぎ(2026-11-24時点)
+# video-vault 引き継ぎ(2026-11-25時点)
 
 **新しいセッションはこのファイルを最初に読む。** 現在地・次にやること・つまずきどころが揃っている。
 役割分担の原則は「規約は各AGENTS.md、手順は`dev-setup.md`、**いま何をすべきかはこのファイル**」。
@@ -30,8 +30,14 @@
 - **Surface で常駐させた**(2026-11-23)。WSL の systemd のサービス `video-vault-web`。`127.0.0.1:8787` でだけ待ち受ける(`web.md`「Surface で常駐させる」)
 - **`https://ytdlp.sanei-clover.com` に公開した**(2026-11-24 本人の決定。「Cloudflare は works.sanei-clover.com 同様に素通りで良い。ytdlp 側で Basic 認証」)。
   それまでの規約「公開の URL に出さない」は、本人が改めた(`../AGENTS.md`「Web(PC 版)と Playwright」を書き換えた)
-  - 作り: 専用のトンネル `video-vault` → Surface の `cloudflared`(サービス `video-vault-tunnel`)→ アプリ(`127.0.0.1:8787`)。入口の認証なし、アプリの Basic 認証で守る
-  - 外から確かめたことと、作り方・やめ方は `web.md`「外から使う」。利用者名とパスワードは Surface の `~/.config/video-vault/web.env`(リポジトリに書かない)
+  - 作り: 専用のトンネル `video-vault` → Surface の `cloudflared`(サービス `video-vault-tunnel`)→ アプリ(`127.0.0.1:8787`)。入口の認証なし、アプリのログインで守る
+  - 外から確かめたことと、作り方・やめ方は `web.md`「外から使う」
+  - **ログインを自前のものに替えた**(2026-11-25 本人: 自前のログイン機能を設け、Google の SSO も使えるようにする)。Basic 認証はやめた。
+    メールアドレスとパスワードで入れる。利用者は 1 人(本人。`npm run user -- list`)。利用者の表は Surface の `~/.config/video-vault/users.json`
+  - **「Google でログイン」は、作ってあるが、まだ有効にしていない**。本人が Google Cloud で OAuth クライアントを作り、ID とシークレットを
+    `~/.config/video-vault/web.env` に置くと出る(`web.md`「Google でログイン」を有効にする)。偽の Google を相手にした試験は通っている。**本物の Google では確かめていない**。
+    いまの利用者のアドレスは Gmail のもの。同意画面を「内部」にするなら、Workspace のアドレスの利用者を足す必要がある
+  - Works(perfect-crm)のログインは変えない(本人)。Google Cloud のプロジェクトを Works と分ける必要は無い(クライアントを分ければ足りる。`web.md`)
   - **外からは、ログインの操作ができず、取ったファイルも取り出せない**(窓と保存先が Surface にある)。次に作るなら、この 2 つ
   - Works のトンネルには相乗りしていない。perfect-crm の `scripts/cloudflare-tunnel-setup.py` は「この LAN のトンネルは 1 本に集約する」としているが、
     あちらの cloudflared は Docker の中にいて、この PC の `127.0.0.1` に届かないため、分けた

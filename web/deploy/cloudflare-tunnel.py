@@ -9,7 +9,7 @@
 cloudflared の起動は web/deploy/install-service.sh --tunnel。
 
 - 入口(Cloudflare)に認証は置かない。Works(perfect-crm の scripts/cloudflare-tunnel-setup.py)と同じ型。
-  **守るのはアプリの Basic 認証**なので、先にそれを有効にする(このスクリプトは、有効でなければ止まる)
+  **守るのはアプリのログイン**なので、先に利用者を足す(このスクリプトは、利用者がいなければ止まる)
 - Works のトンネル(sanei-clover-lan)には相乗りしない。あちらの cloudflared は Docker のネットワークの中にいて、
   この PC の 127.0.0.1:8787 に届かない。アプリの待ち受けを 127.0.0.1 から広げないために、専用のトンネルを持つ
 - API のトークンは agent-base の .env から名前で読む(このリポジトリの隣の agent-base。値は出力しない)
@@ -22,6 +22,7 @@ ORIGIN = 'http://127.0.0.1:8787'
 CONFIG_DIR = pathlib.Path(os.environ.get('XDG_CONFIG_HOME') or pathlib.Path.home() / '.config') / 'video-vault'
 TUNNEL_ENV = CONFIG_DIR / 'tunnel.env'
 WEB_ENV = CONFIG_DIR / 'web.env'
+USERS = CONFIG_DIR / 'users.json'
 
 
 def read_env(path):
@@ -103,10 +104,16 @@ if args.remove:
     print('公開をやめた。cloudflared のサービスは web/deploy/install-service.sh --remove-tunnel で外す')
     sys.exit(0)
 
-# 守りはアプリの Basic 認証だけ。有効でないまま外へつなげない
+# 守りはアプリのログインだけ。利用者がいないまま外へつなげない
 web = read_env(WEB_ENV)
-if web.get('VIDEO_VAULT_PUBLIC_HOST', '').lower() != host or not web.get('VIDEO_VAULT_BASIC_USER') or not web.get('VIDEO_VAULT_BASIC_PASSWORD'):
-    sys.exit(f'{WEB_ENV} に、このホスト名(VIDEO_VAULT_PUBLIC_HOST={host})と Basic 認証が書かれていない。先に書いてアプリを入れ直す')
+if web.get('VIDEO_VAULT_PUBLIC_HOST', '').lower() != host:
+    sys.exit(f'{WEB_ENV} に、このホスト名(VIDEO_VAULT_PUBLIC_HOST={host})が書かれていない。先に書いてアプリを入れ直す')
+try:
+    registered = json.loads(USERS.read_text(encoding='utf-8')).get('users') or []
+except (FileNotFoundError, ValueError):
+    registered = []
+if not registered:
+    sys.exit(f'{USERS} に利用者がいない。先に足す: (cd web && npm run user -- add <メールアドレス>)')
 
 others = [r for r in records if r['type'] != 'CNAME']
 if others:

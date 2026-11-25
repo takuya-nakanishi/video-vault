@@ -4,6 +4,8 @@
 // 1. Host ヘッダが 127.0.0.1 か localhost(別の名前をこの PC へ向ける DNS の付け替えを断る)
 // 2. 起動のたびに作る合言葉(トークン)。画面の HTML にだけ埋めてあり、別のサイトの JS からは読めない
 // 3. Origin ヘッダが付いていれば、このサーバ自身であること
+//
+// 利用者の表に人がいるとき(公開用のホスト名があるときは必ず)は、その前にログインを求める(auth/http.mjs)。
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,6 +19,10 @@ import { DownloadCenter } from './downloadCenter.mjs';
 import { LoginBrowser } from './loginBrowser.mjs';
 import { locateYtdlp, locateFfmpeg } from './ytdlp.mjs';
 import { playerUuidOf } from './vidyard.mjs';
+import { UserStore } from './auth/users.mjs';
+import { SessionStore } from './auth/sessions.mjs';
+import { OidcClient } from './auth/oidc.mjs';
+import { createAuth } from './auth/http.mjs';
 
 const PUBLIC_DIR = path.join(WEB_ROOT, 'public');
 const STATIC = {
@@ -39,16 +45,6 @@ function safeEqual(a, b) {
   const y = Buffer.from(String(b));
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
-
-/** 長さの違いを時間から読ませないよう、ハッシュにしてから比べる */
-function secretEqual(a, b) {
-  const h = (v) => crypto.createHash('sha256').update(String(v)).digest();
-  return crypto.timingSafeEqual(h(a), h(b));
-}
-
-/** 同じ相手が Basic 認証をこの回数まちがえたら、しばらく受け付けない */
-export const BASIC_MAX_FAILURES = 5;
-export const BASIC_LOCK_MS = 15 * 60 * 1000;
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
@@ -181,45 +177,32 @@ export function createApp(config, overrides = {}) {
     new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, ...(publicHost ? [`https://${publicHost}`] : [])]);
 
   const now = overrides.now ?? Date.now;
-  const basic = config.basicUser ? { user: config.basicUser, password: config.basicPassword } : null;
-  /** Basic 認証をまちがえた相手 → { count, until } */
-  const failures = new Map();
 
-  /**
-   * Basic 認証。通れば null、通らなければ返した応答の状態コード。
-   * 相手は、トンネル(Cloudflare)が付ける CF-Connecting-IP で見分ける。このサーバは 127.0.0.1 でしか待ち受けないので、
-   * つなげるのはこの PC の中のプロセスだけで、そのヘッダを外の人が直接は偽れない。
-   */
-  function rejectByBasic(req, res) {
-    if (!basic) return null;
-    const who = String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '');
-    const f = failures.get(who);
-    if (f && f.until > now()) {
-      send(res, 429, { error: 'まちがいが続いたので、しばらく受け付けない' }, undefined, {
-        'Retry-After': String(Math.ceil((f.until - now()) / 1000)),
-      });
-      return 429;
-    }
-    let ok = false;
-    const m = /^Basic ([A-Za-z0-9+/=]+)$/.exec(String(req.headers.authorization ?? ''));
-    if (m) {
-      const text = Buffer.from(m[1], 'base64').toString('utf8');
-      const i = text.indexOf(':');
-      // 利用者名とパスワードの両方を必ず比べる(片方で打ち切ると、どちらが違うかを時間から読める)
-      const userOk = secretEqual(i < 0 ? '' : text.slice(0, i), basic.user);
-      const passOk = secretEqual(i < 0 ? '' : text.slice(i + 1), basic.password);
-      ok = i >= 0 && userOk && passOk;
-    }
-    if (ok) {
-      failures.delete(who);
-      return null;
-    }
-    if (failures.size > 5000) failures.clear(); // 覚えすぎない
-    const count = (f && f.until <= now() && f.count >= BASIC_MAX_FAILURES ? 0 : (f?.count ?? 0)) + 1;
-    failures.set(who, { count, until: count >= BASIC_MAX_FAILURES ? now() + BASIC_LOCK_MS : 0 });
-    send(res, 401, { error: '認証が要る' }, undefined, { 'WWW-Authenticate': 'Basic realm="video-vault", charset="UTF-8"' });
-    return 401;
+  // ログイン。利用者の表にいる人だけを通す。公開用のホスト名があるときは、表が空でも・消されても、必ずログインを求める
+  const users = new UserStore(config.usersFile ?? path.join(config.dataDir, 'users.json'));
+  if (publicHost && users.list().length === 0) {
+    throw new Error('公開用のホスト名を指定するときは、先に利用者を足す(npm run user -- add <メールアドレス>)。利用者がいないまま外へは出さない');
   }
+  const oidc =
+    overrides.oidc ??
+    (config.googleClientId
+      ? new OidcClient({
+          clientId: config.googleClientId,
+          clientSecret: config.googleClientSecret,
+          redirectUri: `https://${publicHost}/auth/google/callback`,
+        })
+      : null);
+  const auth = createAuth({
+    users,
+    sessions: new SessionStore(path.join(config.dataDir, 'sessions.json'), now),
+    oidc,
+    always: publicHost !== null,
+    now,
+    send,
+    readJson,
+    allowedOrigins,
+    publicDir: PUBLIC_DIR,
+  });
 
   async function handle(req, res) {
     if (!allowedHosts().has(String(req.headers.host ?? '').toLowerCase())) {
@@ -234,14 +217,29 @@ export function createApp(config, overrides = {}) {
     }
     // 次からは、ブラウザが自分で https を使う
     if (viaPublicHost) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
-    // 画面も API も、Basic 認証を通ってからでないと何も返さない(合言葉の入った HTML も返さない)
-    if (rejectByBasic(req, res) !== null) return;
     const url = new URL(req.url, `http://${req.headers.host}`);
+
+    // ログインを通ってからでないと、画面も API も何も返さない(合言葉の入った HTML も返さない)。
+    // ログインの前に受けるのは、ログインの画面とその口だけ(auth/http.mjs)
+    let session = null;
+    if (auth.enabled()) {
+      if (await auth.route(req, res, url, viaPublicHost)) return;
+      session = auth.sessionOf(req, viaPublicHost);
+      if (!session) {
+        // 画面を開こうとした人はログインの画面へ送る。API とそのほかは 401
+        if (req.method === 'GET' && url.pathname === '/') return send(res, 302, { to: '/login' }, undefined, { Location: '/login' });
+        return send(res, 401, { error: 'ログインが要る' });
+      }
+    }
 
     if (req.method === 'GET' && Object.hasOwn(STATIC, url.pathname)) {
       const [file, type] = STATIC[url.pathname];
       let body = fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8');
-      if (file === 'index.html') body = body.replaceAll('__VV_TOKEN__', token);
+      if (file === 'index.html') {
+        // メールアドレスは表に入れるときに形を確かめてあるが、HTML に入れる前に記号を置き換えておく
+        const safeUser = (session?.email ?? '').replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+        body = body.replaceAll('__VV_TOKEN__', token).replaceAll('__VV_USER__', safeUser);
+      }
       return send(res, 200, body, type);
     }
     if (!url.pathname.startsWith('/api/')) return send(res, 404, { error: '無い' });

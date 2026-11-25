@@ -78,29 +78,73 @@ flowchart LR
   U["スマホ・ほかの PC"]
   CF["Cloudflare<br/>(入口。認証なし)"]
   T["cloudflared<br/>(video-vault-tunnel)"]
-  A["Basic 認証<br/>+ Host・合言葉・Origin"]
+  A["ログイン<br/>+ Host・合言葉・Origin"]
   APP["アプリ<br/>(127.0.0.1:8787。video-vault-web)"]
   U -->|"https"| CF -->|"トンネル video-vault"| T --> A --> APP
 ```
 
 - 外のブラウザは Cloudflare へ https でつなぐ。DNS は `ytdlp` の CNAME(プロキシ ON)で、トンネル `video-vault` を指す(`web/deploy/cloudflare-tunnel.py`)
 - Surface の中の `cloudflared`(サービス `video-vault-tunnel`)が、Cloudflare からの要求を `http://127.0.0.1:8787` へ渡す(`web/deploy/install-service.sh --tunnel`)
-- アプリは Basic 認証を通るまで何も返さない。通ったあとも Host・合言葉・Origin を確かめる(`web/src/server.mjs`)
+- アプリはログインを通るまで何も返さない(開いているのはログインの画面だけ)。通ったあとも Host・合言葉・Origin を確かめる(`web/src/server.mjs`・`web/src/auth/`)
 - 図の対象外: ログイン用のブラウザと保存先(上の図)。どちらも Surface の中にあり、外からは届かない
+
+### ログイン
+
+アプリ自身がログインを持つ(2026-11-25。それまでの Basic 認証を置き換えた)。
+
+| 入り方 | 中身 |
+|---|---|
+| メールアドレスとパスワード | パスワードは 12 文字以上。ハッシュ(scrypt)だけを持つ |
+| Google でログイン | OpenID Connect(認可コード + PKCE)。クライアントの ID とシークレットを設定したときだけ、ボタンが出る |
+
+- **入れるのは、利用者の表(`~/.config/video-vault/users.json`)にいる人だけ**。Google で確かめられても、表にいなければ入れない
+- Google の利用者との結び付けは、Google の変わらない ID(`sub`)。初めてのときだけ、Google が確かめたアドレスで表を探して結ぶ。
+  次からは、Google の側でアドレスが変わっても同じ人として入れる。結んである人に、別の Google アカウントを結び直さない
+- セッションは 30 日。Cookie は、外からは `__Host-vv_session`(Secure・HttpOnly・SameSite=Lax)、この PC の中(http)からは `vv_session`
+- **まちがいが続いたとき**: 同じ相手(IP)が 5 回まちがえると、15 分のあいだ受け付けない。同じアカウントへのまちがいが 5 回続くと、
+  相手を変えても、次を受けるまで待たせる(1 分から倍にして 1 時間まで)。締め出されたら、待つか `systemctl --user restart video-vault-web`
+- 公開用の名前に http で来た要求は、ログインを求める前に https へ回す
+- 応答に `no-transform` を付け、途中(Cloudflare)にページを書き換えさせない
+
+#### 利用者を足す・パスワードを決め直す
+
+```bash
+cd web
+npm run user -- list                               # いる人(パスワードは出さない)
+npm run user -- add <メールアドレス>                # 足して、パスワードを作って 1 度だけ表示する
+npm run user -- add <メールアドレス> --no-password  # Google だけで入る人
+npm run user -- set-password <メールアドレス>       # パスワードを作り直す(その人のログインは全部切れる)
+npm run user -- remove <メールアドレス>             # 消す(その人のログインは全部切れる)
+```
+
+道具で変えた中身は、入れ直さなくてもすぐ効く。
+
+#### 「Google でログイン」を有効にする
+
+1. Google Cloud のコンソールで、OAuth クライアント(種類はウェブ アプリケーション)を作る。同意画面の対象は「内部」(Workspace のアカウントだけ)。
+   承認済みのリダイレクト URI は `https://ytdlp.sanei-clover.com/auth/google/callback`
+2. `~/.config/video-vault/web.env` に足す:
+   `VIDEO_VAULT_GOOGLE_CLIENT_ID=…` と `VIDEO_VAULT_GOOGLE_CLIENT_SECRET=…`
+3. Google で入る人を表に足す(Workspace のアドレス): `npm run user -- add <アドレス> --no-password`
+4. `systemctl --user restart video-vault-web`。ログインの画面に「Google でログイン」が出る
+
+- **Google Cloud のプロジェクトを Works と分ける必要は無い**。1 つのプロジェクトに OAuth クライアントをいくつも作れ、ID・シークレット・リダイレクト URI はクライアントごとに別。
+  プロジェクトごとに 1 つなのは、同意画面(アプリの名前・対象が「内部」か「外部」か)。分けるのは、同意画面の名前を変えたいときと、Works のプロジェクト(ドライブの権限を持つ)と切り離したいとき
+- クライアントは Works と分ける(ytdlp のシークレットが漏れても、Works に及ばない)
+- 「内部」だけでは足りない。「内部」は Workspace の全員を通すので、入れる人は利用者の表で限る
+- **2026-11-25 の時点で、まだ有効にしていない**(クライアントをまだ作っていない)。偽の Google を相手にした試験は通っている。本物の Google では確かめていない
 
 ### 作り方(やり直すとき)
 
 ```bash
-# 1. Basic 認証と公開用の名前を ~/.config/video-vault/web.env に書く(持ち主だけが読める)
-#    VIDEO_VAULT_PUBLIC_HOST=ytdlp.sanei-clover.com
-#    VIDEO_VAULT_BASIC_USER=<利用者名>
-#    VIDEO_VAULT_BASIC_PASSWORD=<16 文字以上>
-web/deploy/install-service.sh                             # 2. アプリを入れ直す(認証なしは 401 になる)
-web/deploy/cloudflare-tunnel.py ytdlp.sanei-clover.com    # 3. トンネル・経路・CNAME を作り、トークンを書く
-web/deploy/install-service.sh --tunnel                    # 4. cloudflared を起動する
+(cd web && npm run user -- add <メールアドレス>)           # 1. 利用者を足す
+# 2. 公開用の名前を ~/.config/video-vault/web.env に書く:  VIDEO_VAULT_PUBLIC_HOST=ytdlp.sanei-clover.com
+web/deploy/install-service.sh                             # 3. アプリを入れ直す(ログインなしは、ログインの画面へ送られる)
+web/deploy/cloudflare-tunnel.py ytdlp.sanei-clover.com    # 4. トンネル・経路・CNAME を作り、トークンを書く
+web/deploy/install-service.sh --tunnel                    # 5. cloudflared を起動する
 ```
 
-- 3 は、1 が済んでいないと止まる。4 は、アプリが認証を求めていないと止まる(認証なしで外へつながない)
+- 公開用の名前があるのに利用者がいなければ、アプリは起動しない。4 は、利用者がいないと止まる。5 は、アプリがログインを求めていないと止まる
 - Cloudflare の API のトークンは、agent-base の `.env` から名前で読む(`SC_CLOUDFLARE_SANEI_CLOVER_COM_API_TOKEN` など)
 - `cloudflared` は `~/.local/bin/cloudflared`(2026.9.1。Works と同じ版)。GitHub の配布物を置いた
 
@@ -111,33 +155,21 @@ web/deploy/install-service.sh --remove-tunnel                     # 外から届
 web/deploy/cloudflare-tunnel.py ytdlp.sanei-clover.com --remove   # DNS のレコードとトンネルを消す
 ```
 
-### 守り
-
-| 環境変数 | 中身 |
-|---|---|
-| `VIDEO_VAULT_PUBLIC_HOST` | 外から届く名前(ホスト名だけ)。この名前の Host と、`https://` のこの名前の Origin を受け付ける |
-| `VIDEO_VAULT_BASIC_USER`・`VIDEO_VAULT_BASIC_PASSWORD` | Basic 認証。パスワードは 16 文字以上 |
-
-- **公開用のホスト名は、Basic 認証と揃っているときだけ設定できる**。片方だけ・短いパスワードでは起動しない
-- Basic 認証を設定すると、画面も API も、認証を通るまで何も返さない(この PC の中からでも要る)
-- 同じ相手が 5 回まちがえると、15 分のあいだ受け付けない(相手は、トンネルが付ける `CF-Connecting-IP` で見分ける)。
-  自分が締め出されたら、15 分待つか、`systemctl --user restart video-vault-web`
-- 公開用の名前に http で来た要求は、認証を求める前に https へ回す
-- 応答に `no-transform` を付け、途中(Cloudflare)にページを書き換えさせない。付けないと、入口が解析用のスクリプトを HTML へ差し込もうとする
-- **パスワードを変える**: `~/.config/video-vault/web.env` を書き換えて、`systemctl --user restart video-vault-web`
-
-### 外から確かめたこと(2026-11-24)
+### 外から確かめたこと(2026-11-25。ログインに替えたあと)
 
 | 確かめ | 結果 |
 |---|---|
-| 認証なし(画面・API) | 401。合言葉の入った HTML を返さない |
-| 正しい認証 / 誤った認証 | 200 / 401 |
-| 認証は通るが合言葉なしの命令 / 別のサイトからの命令 | 401 / 403 |
-| http で来た要求 | 308 で https へ。認証は求めない |
-| 誤りを 5 回のあと、正しいパスワード | 429(この PC の中からは 200) |
-| 外の URL から YouTube の公開の動画を 1 本渡す | 成功。結合された 1 本が Surface の保存先にできた。進み具合の通知も届いた |
+| ログインなしで画面を開く | 302 でログインの画面へ |
+| ログインなしで API・画面の JS | 401 |
+| http で来た要求 | 308 で https へ |
+| 前の Basic 認証 | 効かない(ログインの画面へ送られる) |
+| スマホの大きさの実物のブラウザで、誤ったパスワード | 断られ、Cookie は付かない |
+| 同じく、正しいパスワード | 画面が出て、候補が動く。Cookie は `__Host-vv_session`(Secure・HttpOnly・Lax) |
+| ログアウト | Cookie が消え、ログインの画面へ戻る。画面のエラー無し |
 | 待ち受けているアドレス | `127.0.0.1:8787` だけ |
-| スマホの大きさの実物のブラウザで開く | 認証なしは 401。認証つきで画面が出て、候補が動く。画面のエラーも横スクロールも無い |
+
+2026-11-24(Basic 認証のころ)に外から確かめた、合言葉なしの命令(401)・別のサイトからの命令(403)・YouTube の公開の動画の取得は、
+ログインに替えたあとは単体と通しの試験で確かめている(外からは流し直していない)。
 
 ### 外から使うときに足りないもの
 
@@ -166,7 +198,10 @@ web/deploy/cloudflare-tunnel.py ytdlp.sanei-clover.com --remove   # DNS のレ�
 | `VIDEO_VAULT_BROWSER_CHANNEL` | Windows は `msedge`、ほかは空(Playwright の Chromium) | ログイン用のブラウザ |
 | `VIDEO_VAULT_HEADLESS` | 無し | `1` で窓を出さない(試験用。ログインの操作ができなくなる) |
 | `VIDEO_VAULT_AUTH_DIR` | `web/.auth` | ログインの状態(ブラウザのプロファイルと Cookie の写し) |
-| `VIDEO_VAULT_DATA_DIR` | `web/.data` | 履歴 |
+| `VIDEO_VAULT_DATA_DIR` | `web/.data` | 履歴とログインのセッション(Cookie の値そのものは持たない) |
+| `VIDEO_VAULT_PUBLIC_HOST` | 無し | 外から届く名前(ホスト名だけ)。指定すると、必ずログインを求める |
+| `VIDEO_VAULT_GOOGLE_CLIENT_ID`・`VIDEO_VAULT_GOOGLE_CLIENT_SECRET` | 無し | 「Google でログイン」。両方を指定する |
+| `VIDEO_VAULT_USERS_FILE` | `~/.config/video-vault/users.json` | 利用者の表 |
 
 **待ち受けるアドレスは `127.0.0.1` に固定で、環境変数でも変えられない**。外からの道は Cloudflare Tunnel だけにする(下の「外から使う」)。
 
@@ -201,7 +236,7 @@ Cookie の写しを取るのは、期限の無い Cookie(セッション Cookie)
 
 ```bash
 cd web
-npm test                                 # 単体(外へ通信しない・ブラウザも yt-dlp も起動しない)
+npm test                                 # 単体(外へ通信しない・ブラウザも yt-dlp も起動しない。ログインは偽の Google を相手にする)
 npm run e2e                              # 通し(実物の yt-dlp とブラウザ。相手はこの PC の中に立てる偽のサイト)
 VIDEO_VAULT_E2E_NETWORK=1 npm run e2e    # 上に加えて、実際の YouTube と公開の Vidyard から取る
 ```

@@ -7,8 +7,8 @@
 #   web/deploy/install-service.sh --remove-tunnel  cloudflared を止めて外す(外から届かなくなる)
 #
 # - 待ち受けるのは 127.0.0.1 だけ(web/src/config.mjs)。このスクリプトは外へ出す設定を何もしない
-# - 外から使うための設定(公開用のホスト名・Basic 認証)は ~/.config/video-vault/web.env に書く。
-#   パスワードが入るので、リポジトリには置かない。無ければ、この PC の中からだけ使える
+# - 外から使うための設定(公開用のホスト名・Google のログイン)は ~/.config/video-vault/web.env に、
+#   利用者の表は ~/.config/video-vault/users.json に置く(秘密が入るので、リポジトリには置かない)
 # - リポジトリの場所は、このスクリプトの場所から求める(場所を決め打ちしない)
 set -euo pipefail
 
@@ -36,9 +36,11 @@ if [ "${1:-}" = "--tunnel" ]; then
   [ -n "$CLOUDFLARED" ] || CLOUDFLARED="$HOME/.local/bin/cloudflared"
   [ -x "$CLOUDFLARED" ] || { echo "cloudflared が見つからない" >&2; exit 1; }
   [ -s "$TUNNEL_ENV" ] || { echo "$TUNNEL_ENV が無い。先に web/deploy/cloudflare-tunnel.py <ホスト名> を走らせる" >&2; exit 1; }
-  # アプリが動いていて、認証なしでは何も返さないことを確かめてから、外へつなぐ
-  CODE="$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:8787/ || true)"
-  [ "$CODE" = 401 ] || { echo "アプリが Basic 認証を求めていない(応答 $CODE)。外へつながない" >&2; exit 1; }
+  # アプリが動いていて、ログインなしでは何も返さないことを確かめてから、外へつなぐ
+  PAGE="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -m 5 http://127.0.0.1:8787/ || true)"
+  API="$(curl -s -o /dev/null -w '%{http_code}' -m 5 'http://127.0.0.1:8787/api/state?token=x' || true)"
+  case "$PAGE" in "302 "*/login) ;; *) echo "アプリがログインを求めていない(画面の応答 $PAGE)。外へつながない" >&2; exit 1 ;; esac
+  [ "$API" = 401 ] || { echo "アプリがログインを求めていない(API の応答 $API)。外へつながない" >&2; exit 1; }
   mkdir -p "$UNIT_DIR"
   cat > "$TUNNEL_UNIT" <<UNIT_EOF
 [Unit]
